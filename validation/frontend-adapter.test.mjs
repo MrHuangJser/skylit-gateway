@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-import { TARGETS, patchAsset, exportsIn, parseJS, sha256 } from './generate-auth-patches.mjs';
+import { TARGETS, SOURCE_PATCHES, patchAsset, exportsIn, parseJS, sha256 } from './generate-auth-patches.mjs';
 
 const adapterSource = await readFile(new URL('../frontend/gateway-auth-adapter.js', import.meta.url), 'utf8');
 const START = 1800000000000;
@@ -285,7 +285,7 @@ test('logout failure is unknown/error, and buttons never open upstream or claim 
 test('both Turbopack export encodings retain layout and getter shape; unexpected/missing/duplicate targets reject', () => {
   for (const [filename, modules] of Object.entries(TARGETS)) {
     const source = Object.entries(modules).map(([id, names]) => `e.s([${names.map((name, i) => `${JSON.stringify(name)},${i % 2 ? '()=>original' : '0,original'}`).join(',')},"untouched",()=>unchanged],${id});`).join('\n');
-    const { output, edits } = patchAsset(source, filename);
+    const { output, edits } = patchAsset(source, filename, { requireSourcePatches: false });
     assert.equal(edits.length, Object.values(modules).flat().length); parseJS(output);
     // The replacement uses the adapter API name, which may differ from the export name
     // for provider aliases (e.g. ClientClerkProvider -> ClerkProvider).
@@ -337,15 +337,25 @@ test('generated public patches match manifest SHA256 and only exact 16 bindings 
     assert.equal(sha256(original), asset.originalSha256); assert.equal(sha256(patched), asset.patchedSha256);
     assert.ok(rust.includes(`("${asset.path}", "${asset.originalSha256}", include_bytes!("patches/${asset.filename}"))`));
     assert.ok(rust.includes(`"${asset.filename}",`));
+    // Verify the source-level edits separately, then rebuild from the export edits only
+    // (their offsets refer to the pre-source-edit text).
+    const exportOnly = patchAsset(original, asset.filename, { requireSourcePatches: false }).output;
+    let withSource = exportOnly;
+    for (const edit of [...result.sourceEdits].sort((a, b) => b.start - a.start)) {
+      withSource = withSource.slice(0, edit.start) + edit.replacement + withSource.slice(edit.start + edit.original.length);
+    }
+    assert.equal(withSource, patched, 'source-level edits must produce the committed file');
+    const patchedBeforeSource = exportOnly;
     // Reconstruct input from unchanged ranges + replaced bindings, proving no gates/claims/SDK implementation removed.
     let restored = '', oldPos = 0, newPos = 0;
     for (const edit of result.edits) {
       const unchanged = original.slice(oldPos, edit.start);
-      assert.equal(patched.slice(newPos, newPos + unchanged.length), unchanged);
+      assert.equal(patchedBeforeSource.slice(newPos, newPos + unchanged.length), unchanged);
       restored += unchanged + edit.original;
       newPos += unchanged.length + edit.replacement.length; oldPos = edit.end;
     }
-    restored += patched.slice(newPos); assert.equal(restored, original);
+    restored += patchedBeforeSource.slice(newPos);
+    assert.equal(restored, original);
     assert.equal(exportsIn(original).length, exportsIn(patched).length); parseJS(patched);
     total += result.edits.length;
     result.edits.forEach(edit => covered.add(edit.name));

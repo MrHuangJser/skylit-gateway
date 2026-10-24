@@ -32,7 +32,7 @@ const API_NAME = Object.freeze({ ClientClerkProvider: 'ClerkProvider' });
 // loads the vendor SDK from clerk.skylit.ai the moment an instance is created, which the
 // vendor rejects for this domain and which crashes the tree. Disabling that single call
 // keeps the instance inert; every auth hook the app uses comes from the adapter anyway.
-const SOURCE_PATCHES = Object.freeze({
+export const SOURCE_PATCHES = Object.freeze({
   '3ehfb7p2agn0l.js': [
     { find: '&&this.loadClerkJS()', replace: '&&void 0' },
   ],
@@ -68,7 +68,7 @@ export function exportsIn(source) {
   });
   return exports;
 }
-export function patchAsset(source, filename) {
+export function patchAsset(source, filename, { requireSourcePatches = true } = {}) {
   const expected = TARGETS[filename];
   if (!expected) throw new Error('Unsupported asset');
   const entries = exportsIn(source), edits = [];
@@ -92,14 +92,21 @@ export function patchAsset(source, filename) {
     const edit = edits.find(edit => edit.start === entry.start);
     if (output.slice(next.start, next.end) !== (edit ? edit.replacement : source.slice(entry.start, entry.end))) throw new Error('Unexpected export modification');
   });
-  // Source-level edits for code outside the export table.
+  // Source-level edits for code outside the export table. Their exact offsets are
+  // recorded so a byte-level reconstruction can undo them precisely.
+  const sourceEdits = [];
   for (const patch of SOURCE_PATCHES[filename] ?? []) {
-    const occurrences = output.split(patch.find).length - 1;
-    if (occurrences !== 1) throw new Error(`Expected exactly one "${patch.find}" in ${filename}; got ${occurrences}`);
-    output = output.replace(patch.find, patch.replace);
+    const at = output.indexOf(patch.find);
+    if (at < 0) {
+      if (!requireSourcePatches) continue; // synthetic fixture
+      throw new Error(`Expected exactly one "${patch.find}" in ${filename}; got 0`);
+    }
+    if (output.indexOf(patch.find, at + 1) >= 0) throw new Error(`"${patch.find}" is not unique in ${filename}`);
+    output = output.slice(0, at) + patch.replace + output.slice(at + patch.find.length);
+    sourceEdits.push({ start: at, end: at + patch.find.length, original: patch.find, replacement: patch.replace });
   }
   parseJS(output);
-  return { output, edits };
+  return { output, edits, sourceEdits };
 }
 export async function generate() {
   const frontend = new URL('../frontend/', import.meta.url);
