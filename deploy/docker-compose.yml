@@ -27,9 +27,9 @@ services:
       DEVICE_STATE_DIR: /var/lib/skylit-device-state
     volumes:
       # Token snapshot written by the sidecar; read-only here.
-      - session:/run/skylit-session:ro
+      # Bind mounts (not named volumes) so the host can own them as uid 10001.
+      - ${SESSION_DIR:-./data/session}:/run/skylit-session:ro
       # Per-device layouts/drawings/watchlists, kept across restarts.
-      # A bind mount lets the host account own the directory as uid 10001.
       - ${DEVICE_STATE_DIR:-./data/device-state}:/var/lib/skylit-device-state
     read_only: true
     security_opt:
@@ -57,14 +57,11 @@ services:
       BROWSER_STATE_DIR: /state
       SESSION_MIN_REMAINING_SECONDS: ${SESSION_MIN_REMAINING_SECONDS:-45}
     volumes:
-      - session:/session
+      - ${SESSION_DIR:-./data/session}:/session
       # Persistent Chromium profile: the sign-in survives restarts.
-      - browser-state:/state
+      - ${BROWSER_STATE_DIR:-./data/browser-state}:/state
     security_opt:
       - no-new-privileges:true
     # Chromium needs a larger /dev/shm than the 64 MB default.
     shm_size: "512mb"
 
-volumes:
-  session:
-  browser-state:
