@@ -38,6 +38,36 @@ pub(crate) fn is_pinned_script(path: &str) -> bool {
     generated::PATCHES.iter().any(|patch| patch.0 == path)
 }
 
+/// A Service Worker that dismantles the original site's caching worker: it drops every
+/// cache, unregisters itself and reloads the controlled tabs so they fetch the rewritten
+/// shell. Served with no-store so the browser re-checks it on each navigation.
+const RETIRING_SW: &str = r#"// Managed by the gateway: the upstream caching worker is retired on company devices.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    try { for (const key of await caches.keys()) await caches.delete(key); } catch (e) {}
+    try { await self.registration.unregister(); } catch (e) {}
+    try {
+      const clients = await self.clients.matchAll({ type: 'window' });
+      for (const client of clients) client.navigate(client.url).catch(() => {});
+    } catch (e) {}
+  })());
+});
+// Never serve a cached document: let every request go to the network.
+self.addEventListener('fetch', event => { event.respondWith(fetch(event.request)); });
+"#;
+
+pub(crate) fn retiring_service_worker() -> Response {
+    let mut response = Response::new(Body::from(RETIRING_SW));
+    response.headers_mut().insert(header::CONTENT_TYPE,
+        HeaderValue::from_static("application/javascript; charset=utf-8"));
+    response.headers_mut().insert("service-worker-allowed", HeaderValue::from_static("/"));
+    let mut response = super::local(response);
+    // no-store (set by local) keeps the browser from caching the retiring worker itself.
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store, max-age=0"));
+    response
+}
+
 fn verify_hash(bytes: &[u8], expected: &str) -> bool {
     hex::encode(Sha256::digest(bytes)) == expected
 }
@@ -88,12 +118,17 @@ pub(crate) async fn rewrite_if_needed(path: &str, upstream: &mut reqwest::Respon
         (Body::from(patch.2), "application/javascript; charset=utf-8")
     } else {
         let original = String::from_utf8(bytes).map_err(|_| RewriteError::Encoding)?;
-        // A document that does not load the pinned auth chunks (e.g. a bare error
-        // page) needs no adapter: pass it through unchanged rather than failing.
-        if !generated::CRITICAL_BASENAMES.iter().any(|name| original.contains(name)) {
-            (Body::from(original), "text/html; charset=utf-8")
-        } else {
+        // A document that loads the pinned auth chunks gets the adapter injected.
+        if generated::CRITICAL_BASENAMES.iter().any(|name| original.contains(name)) {
             (Body::from(rewrite_html(&original, generated::CRITICAL_BASENAMES)?), "text/html; charset=utf-8")
+        } else if original.contains("clerk.skylit.ai") {
+            // The upstream shipped a new build whose chunk names we do not know, so the
+            // adapter cannot be injected. Serving this shell would load the real Clerk SDK
+            // and fail with an origin error deep in the console; fail loudly instead.
+            return Err(RewriteError::Version);
+        } else {
+            // Static error/placeholder documents need no adapter.
+            (Body::from(original), "text/html; charset=utf-8")
         }
     };
     let mut response = Response::new(body);

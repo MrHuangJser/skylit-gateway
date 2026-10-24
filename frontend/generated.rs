@@ -1,9 +1,9 @@
 // Generated from archived public assets by validation/generate-auth-patches.mjs.
 pub const PATCHES: &[(&str, &str, &[u8])] = &[
-    ("/_next/static/chunks/3saht1vl84b4q.js", "471f5c23ef1b926f9e0319d0f3c8f426c38dd14dd6f57764c8756b9a93793712", include_bytes!("patches/3saht1vl84b4q.js")),
-    ("/_next/static/chunks/0rvuravpijnzz.js", "9153d412e1f37fc603cff77df66d29a33645972636b312fd621c44ab5efb155b", include_bytes!("patches/0rvuravpijnzz.js")),
+    ("/_next/static/chunks/3ehfb7p2agn0l.js", "5596eaffc6caf1acfcc47d8a7d224bc5804015d7374f8c58e5e0aa403fd09da4", include_bytes!("patches/3ehfb7p2agn0l.js")),
+    ("/_next/static/chunks/44ald-muhquop.js", "39ebc29c7558d4f2caf8ebaa02c08322e61a3b956986521795486141d922f75b", include_bytes!("patches/44ald-muhquop.js")),
 ];
 pub const CRITICAL_BASENAMES: &[&str] = &[
-    "3saht1vl84b4q.js",
-    "0rvuravpijnzz.js",
+    "3ehfb7p2agn0l.js",
+    "44ald-muhquop.js",
 ];

@@ -376,6 +376,15 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
         if request.method() != Method::GET { return text(StatusCode::METHOD_NOT_ALLOWED, "GET only"); }
         return frontend::runtime_script();
     }
+    // The original site registers a caching Service Worker that would serve the
+    // UNREWRITTEN app shell from its cache, silently bypassing the auth adapter and
+    // loading the real Clerk SDK (which rejects this domain). Replace it with a worker
+    // that clears its caches, removes itself and reloads open tabs once.
+    if gateway.config.enable_frontend_auth_rewrite
+        && matches!(path, "/sw.js" | "/service-worker.js" | "/sw.js.map")
+    {
+        return frontend::retiring_service_worker();
+    }
     if path == "/_gateway/capabilities" {
         return if request.method() == Method::GET {
             local(Json(Capabilities {

@@ -5,12 +5,12 @@
   "method": "AST export binding replacement only; vendor code never executed",
   "assets": [
     {
-      "path": "/_next/static/chunks/3saht1vl84b4q.js",
-      "filename": "3saht1vl84b4q.js",
-      "originalSha256": "471f5c23ef1b926f9e0319d0f3c8f426c38dd14dd6f57764c8756b9a93793712",
-      "patchedSha256": "ffedc5cf9daae9cca1f0c0e940fd3a425a528d8b670f36e3c3d161bd7010a620",
-      "originalSRI": "sha384-tYNY1SFXahLi5aBB+pXKirwqmAC5P1QsJHXwGWJECx79iWKAVxYeL3atKpU8C5HY",
-      "patchedSRI": "sha384-9Y8wLD2D2aSN5PdxClTSDgJV02Cd5sfey3Q6aHE00MVKYKmHRYgHZEtaQ6FaXrEN",
+      "path": "/_next/static/chunks/3ehfb7p2agn0l.js",
+      "filename": "3ehfb7p2agn0l.js",
+      "originalSha256": "5596eaffc6caf1acfcc47d8a7d224bc5804015d7374f8c58e5e0aa403fd09da4",
+      "patchedSha256": "5afdc502a4cda69ca11fa425ab75641d8cd35008ee80241ca3a0728a1f286589",
+      "originalSRI": "sha384-v3cnCCsuHnGiDbr5A1hDUu54J75v6BpWzPisEI2L4vApTiIm+4HMdlQE1Oxv9HOm",
+      "patchedSRI": "sha384-nUmrI5cCiG7ilv5bXzyl6BMhXSTzQ0y+FH51Ir2Ngqupp6jHB836H1tCJWW5WBso",
       "bindings": [
         {
           "moduleId": 965389,
@@ -70,37 +70,37 @@
       ]
     },
     {
-      "path": "/_next/static/chunks/0rvuravpijnzz.js",
-      "filename": "0rvuravpijnzz.js",
-      "originalSha256": "9153d412e1f37fc603cff77df66d29a33645972636b312fd621c44ab5efb155b",
-      "patchedSha256": "08e544c8242e56ddc6523addd440b49a93f7797a7d03710da4c56bc88e396971",
-      "originalSRI": "sha384-TqlUCXKEJV0YxFMAWFE+qgMnlM3egEtTtG4Qhg8FmrfNHkVYY5f3zsiRFkuTPpL5",
-      "patchedSRI": "sha384-mgtxJQfxFSHUIZrMuxaleCr6y7kotKc7G3Fpi7HMIO3ic+JXoR7tOEbHealD+TdA",
+      "path": "/_next/static/chunks/44ald-muhquop.js",
+      "filename": "44ald-muhquop.js",
+      "originalSha256": "39ebc29c7558d4f2caf8ebaa02c08322e61a3b956986521795486141d922f75b",
+      "patchedSha256": "c0c67f57385fa6700976a60ae17f99e10db4c5272be46de1ae22ae4403589e94",
+      "originalSRI": "sha384-srZkQoqNWK+85J0EfMs1tWz6lwgTEv9ScUNHdTwChv7OQzYNwNVNB07kKoISRuz/",
+      "patchedSRI": "sha384-MQl/tgIfQ6hoALMVjaLNXTY5SjVKdg9Yt8bXLM4QsqzaLjTmK9wYbwx9TQPnAmT1",
       "bindings": [
         {
-          "moduleId": 827085,
+          "moduleId": 496136,
           "name": "useClerk",
-          "kind": "direct"
+          "kind": "getter"
         },
         {
-          "moduleId": 827085,
+          "moduleId": 496136,
           "name": "useOrganization",
-          "kind": "direct"
+          "kind": "getter"
         },
         {
-          "moduleId": 827085,
+          "moduleId": 496136,
           "name": "useOrganizationList",
-          "kind": "direct"
+          "kind": "getter"
         },
         {
-          "moduleId": 827085,
+          "moduleId": 496136,
           "name": "useSession",
-          "kind": "direct"
+          "kind": "getter"
         },
         {
-          "moduleId": 827085,
+          "moduleId": 496136,
           "name": "useUser",
-          "kind": "direct"
+          "kind": "getter"
         }
       ]
     }

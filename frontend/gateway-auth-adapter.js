@@ -14,6 +14,34 @@
   // the page stuck. Retry with bounded backoff; the state stays 'error' meanwhile,
   // so nothing is treated as authenticated until a real verified bootstrap succeeds.
   var RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000], retryTimer = null, retryIndex = 0;
+  // The upstream caching Service Worker would serve the unwritten shell from its cache
+  // and bypass this adapter. Remove any registration and cached documents on load, and
+  // reload once (guarded) so the current tab stops being controlled by it.
+  function retireServiceWorkers() {
+    try {
+      var container = navigator.serviceWorker;
+      if (!container || typeof container.getRegistrations !== 'function') return;
+      container.getRegistrations().then(function (regs) {
+        if (!regs || !regs.length) return;
+        var dropped = false;
+        regs.forEach(function (reg) { try { reg.unregister(); dropped = true; } catch (_) {} });
+        var cached = (window.caches && typeof window.caches.keys === 'function')
+          ? window.caches.keys().then(function (keys) { return Promise.all(keys.map(function (k) { return window.caches.delete(k); })); })
+          : Promise.resolve();
+        cached.catch(function () {}).then(function () {
+          if (!dropped) return;
+          // One guarded reload so the page is rebuilt from the proxy, not from cache.
+          try {
+            var key = 'skylit-gateway:sw-retired';
+            if (window.sessionStorage.getItem(key) === '1') return;
+            window.sessionStorage.setItem(key, '1');
+            window.location.reload();
+          } catch (_) {}
+        });
+      }).catch(function () {});
+    } catch (_) {}
+  }
+  retireServiceWorkers();
   function scheduleRetry() {
     if (retryTimer !== null || logoutPending || state.status === 'anonymous') return;
     var delay = RETRY_DELAYS_MS[Math.min(retryIndex, RETRY_DELAYS_MS.length - 1)];

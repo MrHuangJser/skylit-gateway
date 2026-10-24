@@ -303,7 +303,9 @@ test('both Turbopack export encodings retain layout and getter shape; unexpected
 const ARCHIVE = process.env.SKYLIT_ASSET_ARCHIVE
   ? new URL(`file:///${process.env.SKYLIT_ASSET_ARCHIVE.replace(/\\/g, '/').replace(/^\/+/, '')}/`)
   : new URL('../../api-recon/assets/', import.meta.url);
-const archiveAvailable = await readFile(new URL('3saht1vl84b4q.js', ARCHIVE)).then(() => true, () => false);
+const manifestForArchive = JSON.parse(await readFile(new URL('../frontend/manifest.json', import.meta.url), 'utf8'));
+const archiveAvailable = await readFile(new URL(manifestForArchive.assets[0].filename, ARCHIVE))
+  .then(() => true, () => false);
 
 test('committed patches agree with manifest SHA256 and Rust hash guards (no archive needed)', async () => {
   const manifest = JSON.parse(await readFile(new URL('../frontend/manifest.json', import.meta.url), 'utf8'));

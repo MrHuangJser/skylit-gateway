@@ -5,14 +5,15 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 export const TARGETS = Object.freeze({
-  '3saht1vl84b4q.js': {
+  // Current build (chunk names change on every upstream deploy; module ids are stable).
+  '3ehfb7p2agn0l.js': {
     965389: ['useAuth', 'useSignIn', 'useSignUp'],
     265829: ['SignedIn', 'SignedOut', 'ClerkLoaded', 'ClerkLoading'],
     733917: ['UserButton'],
     192448: ['ClerkProvider', 'SignInButton', 'SignOutButton'],
   },
-  '0rvuravpijnzz.js': {
-    827085: ['useClerk', 'useUser', 'useSession', 'useOrganization', 'useOrganizationList'],
+  '44ald-muhquop.js': {
+    496136: ['useClerk', 'useUser', 'useSession', 'useOrganization', 'useOrganizationList'],
   },
 });
 export function sha256(text) { return createHash('sha256').update(text).digest('hex'); }
