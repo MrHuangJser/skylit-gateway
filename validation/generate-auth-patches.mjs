@@ -27,6 +27,16 @@ export const TARGETS = Object.freeze({
 
 // Public export name -> adapter API name, for bindings the adapter exposes differently.
 const API_NAME = Object.freeze({ ClientClerkProvider: 'ClerkProvider' });
+
+// Exact source edits for code the export table cannot reach. The Clerk isomorphic client
+// loads the vendor SDK from clerk.skylit.ai the moment an instance is created, which the
+// vendor rejects for this domain and which crashes the tree. Disabling that single call
+// keeps the instance inert; every auth hook the app uses comes from the adapter anyway.
+const SOURCE_PATCHES = Object.freeze({
+  '3ehfb7p2agn0l.js': [
+    { find: '&&this.loadClerkJS()', replace: '&&void 0' },
+  ],
+});
 export function sha256(text) { return createHash('sha256').update(text).digest('hex'); }
 export function walk(node, fn) {
   if (!node || typeof node !== 'object') return;
@@ -82,6 +92,13 @@ export function patchAsset(source, filename) {
     const edit = edits.find(edit => edit.start === entry.start);
     if (output.slice(next.start, next.end) !== (edit ? edit.replacement : source.slice(entry.start, entry.end))) throw new Error('Unexpected export modification');
   });
+  // Source-level edits for code outside the export table.
+  for (const patch of SOURCE_PATCHES[filename] ?? []) {
+    const occurrences = output.split(patch.find).length - 1;
+    if (occurrences !== 1) throw new Error(`Expected exactly one "${patch.find}" in ${filename}; got ${occurrences}`);
+    output = output.replace(patch.find, patch.replace);
+  }
+  parseJS(output);
   return { output, edits };
 }
 export async function generate() {
