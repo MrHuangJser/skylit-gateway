@@ -20,6 +20,8 @@ struct Index {
     #[serde(default)]
     routes: Vec<Route>,
     #[serde(default)]
+    templates: Vec<Template>,
+    #[serde(default)]
     entries: Vec<Entry>,
     #[serde(default)]
     captured_at: Option<String>,
@@ -29,6 +31,17 @@ struct Index {
 struct Route {
     route: String,
     file: String,
+}
+
+/// A dynamic route captured once: `pattern` holds `__ID__` where the id goes, and the same
+/// document is served for every id (the code is identical; the page loads its own data).
+#[derive(Debug, Deserialize)]
+struct Template {
+    pattern: String,
+    file: String,
+    /// The id the document was captured for; the served copy has it swapped out.
+    #[serde(default, rename = "capturedId")]
+    captured_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +60,9 @@ pub(crate) struct Mirrored {
     pub file: PathBuf,
     pub content_type: &'static str,
     pub document: bool,
+    /// For a dynamic route: the id the document was captured for, and the id requested.
+    /// The captured document embeds its own id, so the served copy is rewritten.
+    pub substitute: Option<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -54,6 +70,8 @@ pub(crate) struct Mirror {
     root: PathBuf,
     /// Request path -> (stored file, content type, is a document).
     files: HashMap<String, (String, String, bool)>,
+    /// (prefix, suffix, stored file, captured id) for dynamic routes.
+    templates: Vec<(String, String, String, String)>,
     captured_at: Option<String>,
     entries: usize,
 }
@@ -86,7 +104,16 @@ impl Mirror {
             // separator depending on how it was recorded.
             files.insert(route.route, (normalize_relative(&route.file), "text/html; charset=utf-8".to_owned(), true));
         }
-        Self { root, entries: files.len(), files, captured_at: index.captured_at }
+        let mut templates = Vec::new();
+        for template in index.templates {
+            // "/stages/__ID__/replay" -> prefix "/stages/", suffix "/replay"
+            let Some((prefix, rest)) = template.pattern.split_once("__ID__") else { continue };
+            let captured = template.captured_id.clone().unwrap_or_default();
+            templates.push((prefix.to_owned(), rest.to_owned(), normalize_relative(&template.file), captured));
+        }
+        // Longest prefix first so "/stages/x/replay" wins over a broader pattern.
+        templates.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        Self { root, entries: files.len(), files, templates, captured_at: index.captured_at }
     }
 
     pub(crate) fn is_empty(&self) -> bool { self.files.is_empty() }
@@ -99,16 +126,38 @@ impl Mirror {
 
     /// Resolves a request path. Only static assets and captured documents qualify, so a
     /// stray API or data path can never be answered from the snapshot.
-    pub(crate) fn resolve(&self, path: &str) -> Option<Mirrored> {        if path.contains("..") { return None; }
-        let (relative, content_type, document) = self.files.get(path)?;
-        // Documents are exact route matches; assets must live under a static prefix.
+    pub(crate) fn resolve(&self, path: &str) -> Option<Mirrored> {
+        if path.contains("..") { return None; }
+        // Documents are exact route matches; assets must live under a static prefix. This
+        // is what keeps a corrupt index from letting the snapshot answer a data API.
         let static_asset = path.starts_with("/_next/static/") || path.starts_with("/static/");
-        if !*document && !static_asset { return None; }
-        Some(Mirrored {
-            file: self.root.join(relative),
-            content_type: known_content_type(content_type),
-            document: *document,
-        })
+        if let Some((relative, content_type, document)) = self.files.get(path) {
+            if !*document && !static_asset { return None; }
+            return Some(Mirrored {
+                file: self.root.join(relative),
+                content_type: known_content_type(content_type),
+                document: *document,
+                substitute: None,
+            });
+        }
+        // Dynamic routes: one captured document answers every id.
+        for (prefix, suffix, file, captured) in &self.templates {
+            let matched = path.strip_prefix(prefix.as_str())
+                .and_then(|rest| rest.strip_suffix(suffix.as_str()));
+            if let Some(id) = matched {
+                if !id.is_empty() && !id.contains('/') {
+                    let substitute = (!captured.is_empty() && captured != id)
+                        .then(|| (captured.clone(), id.to_owned()));
+                    return Some(Mirrored {
+                        file: self.root.join(file),
+                        content_type: "text/html; charset=utf-8",
+                        document: true,
+                        substitute,
+                    });
+                }
+            }
+        }
+        None
     }
 }
 

@@ -9,14 +9,14 @@ export const TARGETS = Object.freeze({
   // so refreshing is: validation/fetch-live-chunks.mjs, then validation/map-live-seam-ast.mjs,
   // then update the two file names below. Both re-export layers are replaced because the
   // app may resolve the auth hooks through either one.
-  '052rkftq4-r--.js': {
+  '0qbb-i732owy-.js': {
     965389: ['useAuth', 'useSignIn', 'useSignUp'],
     265829: ['SignedIn', 'SignedOut', 'ClerkLoaded', 'ClerkLoading'],
     733917: ['UserButton'],
     192448: ['ClerkProvider', 'SignInButton', 'SignOutButton'],
     827085: ['useClerk', 'useUser', 'useSession', 'useOrganization', 'useOrganizationList'],
   },
-  '03shjukmelf2i.js': {
+  '0b2tuuaj-qxes.js': {
     496136: ['useAuth', 'useClerk', 'useUser', 'useSession', 'useSignIn', 'useSignUp', 'useOrganization', 'useOrganizationList'],
     927534: ['SignedIn', 'SignedOut', 'ClerkLoaded', 'ClerkLoading'],
     // The root provider the app actually renders; without this the Clerk instance is
@@ -33,7 +33,7 @@ const API_NAME = Object.freeze({ ClientClerkProvider: 'ClerkProvider' });
 // vendor rejects for this domain and which crashes the tree. Disabling that single call
 // keeps the instance inert; every auth hook the app uses comes from the adapter anyway.
 export const SOURCE_PATCHES = Object.freeze({
-  '052rkftq4-r--.js': [
+  '0qbb-i732owy-.js': [
     { find: '&&this.loadClerkJS()', replace: '&&void 0' },
   ],
 });

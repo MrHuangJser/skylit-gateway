@@ -24,6 +24,11 @@ const ROUTES = (process.env.SNAPSHOT_ROUTES || [
   '/heatseeker/heatmaps', '/live-stages',
 ].join(',')).split(',').map(r => r.trim()).filter(Boolean);
 const MAX_TOTAL = Number(process.env.SNAPSHOT_MAX_BYTES || 64 * 1024 * 1024);
+// Routes with a dynamic segment. The document for one id is captured and served for every
+// id: the code is identical, and the page loads its own data by id after hydration.
+const TEMPLATES = (process.env.SNAPSHOT_TEMPLATES || '/stages/__ID__,/stages/__ID__/replay')
+  .split(',').map(t => t.trim()).filter(Boolean);
+const TEMPLATE_ID = process.env.SNAPSHOT_TEMPLATE_ID || '';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 
 await rm(ROOT, { recursive: true, force: true });
@@ -105,6 +110,25 @@ for (const route of ROUTES) {
   await writeFile(shellFileFor(route), buf);
 }
 
+// 1b. Capture one instance of each dynamic route as a template.
+const templates = [];
+for (const pattern of TEMPLATES) {
+  if (!TEMPLATE_ID) { console.warn(`skip template ${pattern}: SNAPSHOT_TEMPLATE_ID not set`); continue; }
+  const real = pattern.replace('__ID__', TEMPLATE_ID);
+  let fetched;
+  try { fetched = await fetchOne(real); }
+  catch (error) { console.warn(`skip template ${pattern}: ${String(error.message).slice(0, 60)}`); continue; }
+  const { buf } = fetched;
+  const file = join(ROOT, '__tpl', `${pattern.replace(/[^a-z0-9]+/gi, '_')}.html`);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, buf);
+  for (const ref of collectRefs(buf.toString('utf8'))) enqueue(ref);
+  total += buf.length;
+  templates.push({ pattern, source: real, capturedId: TEMPLATE_ID, file: file.slice(ROOT.length).split(String.fromCharCode(92)).join('/'),
+    sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length });
+  console.log(`template ${pattern} <- ${real} (${buf.length} bytes)`);
+}
+
 // 2. Walk JS/CSS so nested imports and fonts are included too.
 while (queue.length) {
   const path = queue.shift();
@@ -139,6 +163,7 @@ const index = {
   routes: [...shellFiles.entries()].map(([route, file]) => ({
     route, file: file.slice(ROOT.length).split('\\').join('/'),
   })),
+  templates,
   totalBytes: total,
   entries: [...seen.entries()]
     .map(([path, meta]) => ({ path, ...meta }))
@@ -157,5 +182,6 @@ console.log(JSON.stringify({
   scripts: byKind.script?.length ?? 0,
   styles: byKind.style?.length ?? 0,
   assets: byKind.asset?.length ?? 0,
+  templates,
   totalBytes: total,
 }, null, 2));

@@ -585,6 +585,14 @@ async fn mirrored_response(gateway: &Gateway, method: &Method, path: &str, mirro
         return local(response);
     }
     if mirrored.document {
+        let mut bytes = bytes;
+        // A captured dynamic page embeds the id it was captured for: swap it for the id the
+        // caller asked for, so the page loads that record instead of the sample one.
+        if let Some((from, to)) = &mirrored.substitute {
+            if let Ok(text) = String::from_utf8(std::mem::take(&mut bytes)) {
+                bytes = text.replace(from.as_str(), to.as_str()).into_bytes();
+            }
+        }
         let Ok(text_body) = String::from_utf8(bytes) else {
             return text(StatusCode::BAD_GATEWAY, "Snapshot document is not UTF-8");
         };
