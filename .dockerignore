@@ -7,3 +7,8 @@
 !frontend/**
 !Dockerfile
 !.dockerignore
+# Only these four files are needed by deploy/session-sidecar.Dockerfile.
+!validation/package.json
+!validation/package-lock.json
+!validation/session-sidecar.mjs
+!validation/session-refresh-policy.mjs
