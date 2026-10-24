@@ -6,6 +6,7 @@ mod profile;
 mod frontend;
 mod device_state;
 mod mirror;
+mod brand;
 use axum::{
     body::{to_bytes, Body},
     extract::{Request, State},
@@ -138,6 +139,10 @@ struct Gateway {
     devices: device_state::Store,
     /// Captured frontend snapshot; empty when absent, and then everything proxies live.
     mirror: mirror::Mirror,
+    /// White-label rename + skin applied to snapshot bytes on the way out.
+    brand: brand::Brand,
+    /// Branded variants of snapshot text assets, computed once per file.
+    branded: Mutex<HashMap<String, std::sync::Arc<Vec<u8>>>>,
     /// (token hash, owner, verified at): the last positive upstream identity check.
     owner_check: Mutex<Option<(SecretHash, String, Instant)>>,
 }
@@ -168,8 +173,12 @@ impl Gateway {
             eprintln!("frontend mirror: {} files captured {}; static assets and the shell are served locally",
                 mirror.len(), mirror.captured_at().unwrap_or("at an unknown time"));
         }
+        let brand = brand::Brand::from_env();
+        if brand.enabled() {
+            eprintln!("brand: serving as \"{}\" (rename + skin applied at serve time)", brand.name());
+        }
         Ok(Self { config, upstream, client, sessions: Mutex::new(HashMap::new()), edge_lease: Mutex::new(None), devices, mirror,
-            owner_check: Mutex::new(None) })
+            brand, branded: Mutex::new(HashMap::new()), owner_check: Mutex::new(None) })
     }
 
     fn owner_verified_recently(&self, token: &SecretHash, owner: &str) -> bool {
@@ -386,6 +395,13 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
     if path == "/_gateway/diagnose" && gateway.config.enable_browser_auth_adapter {
         return diagnose_page();
     }
+    // The replacement brand mark used wherever the original logo was referenced. Every
+    // variant the app asks for (256px, 64px, dark/light) resolves to the same new mark.
+    if path == brand::BRAND_LOGO_PATH || path.starts_with("/_gateway/brand/") {
+        let mut response = Response::new(Body::from(gateway.brand.logo_svg()));
+        response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("image/svg+xml"));
+        return cacheable(local(response));
+    }
     if path == "/_gateway/auth/adapter.js" {
         if !gateway.config.enable_frontend_auth_rewrite {
             return text(StatusCode::NOT_FOUND, "Not found");
@@ -401,6 +417,12 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
         && matches!(path, "/sw.js" | "/service-worker.js" | "/sw.js.map")
     {
         return frontend::retiring_service_worker();
+    }
+    if path == "/manifest.webmanifest" && gateway.brand.enabled() {
+        let mut response = Response::new(Body::from(gateway.brand.manifest()));
+        response.headers_mut().insert(header::CONTENT_TYPE,
+            HeaderValue::from_static("application/manifest+json"));
+        return cacheable(local(response));
     }
     if path == "/_gateway/capabilities" {
         return if request.method() == Method::GET {
@@ -453,14 +475,14 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
     // proxy live, and data APIs never resolve here.
     if gateway.config.enable_frontend_auth_rewrite {
         if let Some(mirrored) = gateway.mirror.resolve(path) {
-            return mirrored_response(request.method(), path, mirrored).await;
+            return mirrored_response(&gateway, request.method(), path, mirrored).await;
         }
         // The app is a single-page client: upstream answers its deep links (/atlas, /talon,
         // ...) with a 404 document. Serve the captured shell instead so the client router
         // takes over, which is exactly what clicking a sidebar link does.
         if page_like(path) {
             if let Some(shell) = gateway.mirror.shell() {
-                return mirrored_response(request.method(), "/", shell).await;
+                return mirrored_response(&gateway, request.method(), "/", shell).await;
             }
         }
     }
@@ -483,7 +505,21 @@ fn page_like(path: &str) -> bool {
 
 /// Serves one snapshot file. Documents go through the same rewrite the live path uses, so
 /// the adapter injection, account hiding and Clerk removal behave identically.
-async fn mirrored_response(method: &Method, path: &str, mirrored: mirror::Mirrored) -> Response {
+/// Returns the branded variant of a text asset, computing it at most once per path.
+fn branded_bytes(gateway: &Gateway, path: &str, content_type: &str, bytes: &[u8]) -> Option<std::sync::Arc<Vec<u8>>> {
+    if !gateway.brand.enabled() || !brand::is_text_asset(content_type, path) { return None; }
+    let key = format!("{path}|{content_type}");
+    if let Ok(cache) = gateway.branded.lock() {
+        if let Some(hit) = cache.get(&key) { return Some(hit.clone()); }
+    }
+    let text = std::str::from_utf8(bytes).ok()?;
+    let rewritten = gateway.brand.rewrite(text)?;
+    let value = std::sync::Arc::new(rewritten.into_bytes());
+    if let Ok(mut cache) = gateway.branded.lock() { cache.insert(key, value.clone()); }
+    Some(value)
+}
+
+async fn mirrored_response(gateway: &Gateway, method: &Method, path: &str, mirrored: mirror::Mirrored) -> Response {
     let Ok(bytes) = tokio::fs::read(&mirrored.file).await else {
         // The index promised a file that is gone: fall back to the live upstream rather
         // than serving a broken page.
@@ -498,7 +534,10 @@ async fn mirrored_response(method: &Method, path: &str, mirrored: mirror::Mirror
             eprintln!("frontend mirror: {path} in the snapshot is not the pinned build");
             return text(StatusCode::BAD_GATEWAY, "Snapshot does not match the pinned build");
         }
-        let mut response = Response::new(Body::from(patched));
+        let body = branded_bytes(gateway, path, "application/javascript", patched)
+            .map(|bytes| Body::from(bytes.as_ref().clone()))
+            .unwrap_or_else(|| Body::from(patched));
+        let mut response = Response::new(body);
         response.headers_mut().insert(header::CONTENT_TYPE,
             HeaderValue::from_static("application/javascript; charset=utf-8"));
         response.headers_mut().insert("x-skylit-gateway-adapter", HeaderValue::from_static("version-pinned"));
@@ -511,7 +550,10 @@ async fn mirrored_response(method: &Method, path: &str, mirrored: mirror::Mirror
         };
         return match frontend::rewrite_document(&text_body) {
             Ok(rewritten) => {
-                let mut response = Response::new(Body::from(rewritten));
+                let branded = gateway.brand.rewrite_document(&rewritten);
+                let sheet = if gateway.brand.enabled() { gateway.brand.stylesheet() } else { String::new() };
+                let document = brand::inject_stylesheet(&branded, &sheet);
+                let mut response = Response::new(Body::from(document));
                 response.headers_mut().insert(header::CONTENT_TYPE,
                     HeaderValue::from_static("text/html; charset=utf-8"));
                 response.headers_mut().insert("x-skylit-gateway-adapter", HeaderValue::from_static("version-pinned"));
@@ -521,7 +563,11 @@ async fn mirrored_response(method: &Method, path: &str, mirrored: mirror::Mirror
             Err(error) => error.response(),
         };
     }
-    let mut response = Response::new(Body::from(bytes));
+    let body = match branded_bytes(gateway, path, mirrored.content_type, &bytes) {
+        Some(branded) => Body::from(branded.as_ref().clone()),
+        None => Body::from(bytes),
+    };
+    let mut response = Response::new(body);
     if method == Method::HEAD { *response.body_mut() = Body::empty(); }
     response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(mirrored.content_type));
     response.headers_mut().insert("x-skylit-frontend-source", HeaderValue::from_static("snapshot"));

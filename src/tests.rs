@@ -1548,6 +1548,43 @@ fn document_static_urls_carry_the_build_tag_so_a_cdn_cannot_serve_a_stale_copy()
 }
 
 #[test]
+fn brand_renames_display_text_but_never_breaks_identifiers_or_links() {
+    use crate::brand::Brand;
+    let brand = Brand::from_env();
+    // Display text is renamed, in both cases the app uses.
+    for text in ["Skylit Team", "SKYLIT · Oct 24, 2026", "Skylit Terminal", "Skylit plan"] {
+        let out = brand.rewrite(text).unwrap_or_default();
+        assert!(out.contains(brand.name()), "{text} -> {out}");
+        assert!(!out.contains("Skylit") && !out.contains("SKYLIT"), "{text} -> {out}");
+    }
+    // Identifiers, links and the upstream repo keep their bytes: renaming those would
+    // break the adapter hook, inbound links, or the app's own wiring.
+    for keep in ["window.__SKYLIT_GATEWAY_AUTH.bindReact(x)", "https://app.skylit.ai/docs",
+        "https://github.com/SkylitAI/skylit-frontend/pull/5901", "SkylitAI/skylit-arc-research",
+        "onShowSkylitAI", "skylit_share_mode"] {
+        assert_eq!(brand.rewrite(keep).as_deref(), None, "must stay untouched: {keep}");
+    }
+    // The vendor mark is redirected to the new one.
+    assert_eq!(brand.rewrite("/brand/skylit-satin-graphite-dark-256.png").as_deref(),
+        Some("/_gateway/brand/satin-graphite-dark-256.png"));
+}
+
+#[test]
+fn brand_document_swaps_icon_links_and_manifest_carries_the_new_name() {
+    use crate::brand::Brand;
+    let brand = Brand::from_env();
+    let html = r#"<head><link rel="icon" href="/favicon-32x32.png?v=1"/><link rel="manifest" href="/manifest.webmanifest"/><link rel="icon" href="/icon-192x192.png?v=2"/></head>"#;
+    let out = brand.rewrite_document(html);
+    assert_eq!(out.matches("href=\"/_gateway/brand/mark.svg\"").count(), 2, "{out}");
+    // The manifest link is not an icon and must survive.
+    assert!(out.contains("href=\"/manifest.webmanifest\""));
+    let manifest = brand.manifest();
+    assert!(manifest.contains(brand.name()));
+    assert!(!manifest.contains("Skylit"));
+    assert!(manifest.contains("/_gateway/brand/mark.svg"));
+}
+
+#[test]
 fn public_origin_is_a_single_origin_not_a_destination_url() {    assert_eq!(parse_origin("https://gateway.example.test/").unwrap(), ORIGIN);
     for bad in ["null", "file:///tmp", "https://user:password@gateway.example.test", "https://gateway.example.test/path", "https://gateway.example.test/?query", "https://gateway.example.test/#fragment"] {
         assert!(parse_origin(bad).is_err());
