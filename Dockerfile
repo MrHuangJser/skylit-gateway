@@ -21,6 +21,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder --chown=10001:10001 /build/target/release/skylit-gateway /app/skylit-gateway
+# The captured frontend snapshot (shell + chunks + fonts). Serving these locally keeps the
+# adapter pinned to one build, so an upstream deploy cannot rename the chunks under it.
+COPY --from=builder --chown=10001:10001 /build/frontend/mirror /app/frontend-mirror
+ENV FRONTEND_MIRROR_DIR=/app/frontend-mirror
 # A numeric non-root UID/GID needs no shell account or writable application directory.
 USER 10001:10001
 EXPOSE 8080

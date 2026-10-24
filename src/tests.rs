@@ -26,7 +26,10 @@ impl Drop for Fixture { fn drop(&mut self) { self.task.abort(); } }
 
 fn config() -> Config {
     Config { access_hash: hash(TEST_TOKEN.as_bytes()), public_origin: ORIGIN.into(), cookie_secure: true, session_file: None,
-        enable_browser_auth_adapter: false, enable_frontend_auth_rewrite: false, enable_open_device_access: false, device_state_dir: None }
+        enable_browser_auth_adapter: false, enable_frontend_auth_rewrite: false, enable_open_device_access: false,
+        device_state_dir: None,
+        // Tests exercise the live path; the snapshot tests point at their own directory.
+        frontend_mirror_dir: "tests/no-snapshot-here".into() }
 }
 
 async fn fixture() -> Fixture { fixture_with_config(config()).await }
@@ -1393,9 +1396,132 @@ async fn content_hashed_static_assets_are_browser_cacheable_but_api_and_pages_ar
     }
 }
 
+/// A snapshot directory with one document and one asset. The shell loads whatever chunks
+/// the committed manifest currently pins, so this test never hardcodes a build.
+fn write_mirror(dir: &std::path::Path) -> std::path::PathBuf {
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("frontend/manifest.json").expect("manifest")).expect("manifest json");
+    let tags: String = manifest["assets"].as_array().expect("assets").iter()
+        .map(|asset| format!("<script src=\"{}\" async></script>", asset["path"].as_str().expect("path")))
+        .collect();
+    let shell = format!("<!doctype html><html><head>{tags}</head><body>snapshot-marker</body></html>");
+    std::fs::create_dir_all(dir.join("__shell")).unwrap();
+    std::fs::create_dir_all(dir.join("_next/static/chunks")).unwrap();
+    std::fs::write(dir.join("__shell/index.html"), &shell).unwrap();
+    std::fs::write(dir.join("_next/static/chunks/other-abc.js"), "console.log('snapshot asset');").unwrap();
+    std::fs::write(dir.join("index.json"), serde_json::json!({
+        "schemaVersion": 1, "capturedAt": "2026-10-24T00:00:00.000Z", "origin": "https://app.skylit.ai",
+        "routes": [{ "route": "/", "file": "__shell/index.html" }],
+        "entries": [
+            { "path": "/", "contentType": "text/html; charset=utf-8", "bytes": shell.len(), "kind": "document" },
+            { "path": "/_next/static/chunks/other-abc.js", "contentType": "application/javascript; charset=utf-8",
+              "bytes": 30, "kind": "script" },
+        ],
+    }).to_string()).unwrap();
+    dir.to_path_buf()
+}
+
+#[tokio::test]
+async fn snapshot_serves_the_shell_and_assets_without_asking_upstream() {
+    let dir = std::env::temp_dir().join(format!("skylit-mirror-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let root = write_mirror(&dir);
+    let now = epoch_now();
+    let file = SessionFile::new(Some(&snapshot(UPSTREAM_TEST_TOKEN, now, now + 180)));
+    let mut config = edge_config(&file);
+    config.frontend_mirror_dir = root.clone();
+    let f = fixture_with_config(config).await;
+
+    // The shell comes from the snapshot, still rewritten for the adapter.
+    let page = f.app.clone().oneshot(authorized_request(Method::GET, "/")).await.unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    assert_eq!(page.headers()["x-skylit-frontend-source"], "snapshot");
+    let text = body(page).await;
+    assert!(text.contains("data-skylit-gateway-auth-runtime"));
+    assert!(text.contains("snapshot-marker"), "content must come from the snapshot file");
+
+    // Static assets come from the snapshot too, and stay browser-cacheable.
+    let asset = f.app.clone().oneshot(authorized_request(Method::GET, "/_next/static/chunks/other-abc.js")).await.unwrap();
+    assert_eq!(asset.status(), StatusCode::OK);
+    assert_eq!(asset.headers()["x-skylit-frontend-source"], "snapshot");
+    assert_eq!(asset.headers()[header::CACHE_CONTROL], "public, max-age=31536000, immutable");
+    assert!(body(asset).await.contains("snapshot asset"));
+
+    // Nothing above reached upstream.
+    assert!(f.mock.requests.lock().unwrap().is_empty());
+
+    // A path outside the snapshot still proxies live (data and unknown chunks).
+    let live = f.app.clone().oneshot(authorized_request(Method::GET, "/api/symbols")).await.unwrap();
+    assert_eq!(live.status(), StatusCode::OK);
+    assert_eq!(f.mock.requests.lock().unwrap().len(), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn snapshot_never_answers_data_paths_even_if_an_entry_matches() {
+    let dir = std::env::temp_dir().join(format!("skylit-mirror-data-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let root = write_mirror(&dir);
+    // A hostile/corrupt index must not let the snapshot shadow a data API.
+    std::fs::write(root.join("index.json"), serde_json::json!({
+        "schemaVersion": 1, "routes": [],
+        "entries": [{ "path": "/api/symbols", "contentType": "application/json; charset=utf-8", "bytes": 2 }],
+    }).to_string()).unwrap();
+    let now = epoch_now();
+    let file = SessionFile::new(Some(&snapshot(UPSTREAM_TEST_TOKEN, now, now + 180)));
+    let mut config = edge_config(&file);
+    config.frontend_mirror_dir = root.clone();
+    let f = fixture_with_config(config).await;
+    let r = f.app.clone().oneshot(authorized_request(Method::GET, "/api/symbols")).await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    // Served by the mock upstream, not from the snapshot.
+    assert!(r.headers().get("x-skylit-frontend-source").is_none());
+    assert_eq!(f.mock.requests.lock().unwrap().len(), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn snapshot_serves_pinned_chunks_patched_and_refuses_a_foreign_build() {
+    let dir = std::env::temp_dir().join(format!("skylit-mirror-pinned-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let root = write_mirror(&dir);
+    // Copy the real pinned sources into the snapshot under their request paths.
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("frontend/manifest.json").expect("manifest")).expect("json");
+    for asset in manifest["assets"].as_array().expect("assets") {
+        let path = asset["path"].as_str().expect("path").trim_start_matches('/');
+        let file = root.join(path);
+        std::fs::create_dir_all(file.parent().expect("parent")).unwrap();
+        if std::fs::copy(format!("../.local/live-chunks/{}", asset["filename"].as_str().expect("name")), &file).is_err() {
+            std::fs::write(&file, b"not the pinned build").unwrap();
+        }
+    }
+    let now = epoch_now();
+    let file = SessionFile::new(Some(&snapshot(UPSTREAM_TEST_TOKEN, now, now + 180)));
+    let mut config = edge_config(&file);
+    config.frontend_mirror_dir = root.clone();
+    let f = fixture_with_config(config).await;
+
+    let pinned = manifest["assets"][0]["path"].as_str().expect("path");
+    let r = f.app.clone().oneshot(authorized_request(Method::GET, pinned)).await.unwrap();
+    if root.join(pinned.trim_start_matches('/')).exists()
+        && std::fs::read(root.join(pinned.trim_start_matches('/'))).map(|b| crate::frontend::sha256_hex(&b))
+            .ok().as_deref() == manifest["assets"][0]["originalSha256"].as_str() {
+        // The snapshot holds the pinned build: the patched bytes are served, no upstream hit.
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.headers()["x-skylit-frontend-source"], "snapshot");
+        assert!(body(r).await.contains("__SKYLIT_GATEWAY_AUTH"));
+        assert!(f.mock.requests.lock().unwrap().is_empty());
+    } else {
+        // A snapshot with a different build must refuse rather than serve code the patches
+        // were not generated for (that is what broke the page originally).
+        assert_eq!(r.status(), StatusCode::BAD_GATEWAY);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
-fn public_origin_is_a_single_origin_not_a_destination_url() {
-    assert_eq!(parse_origin("https://gateway.example.test/").unwrap(), ORIGIN);
+fn public_origin_is_a_single_origin_not_a_destination_url() {    assert_eq!(parse_origin("https://gateway.example.test/").unwrap(), ORIGIN);
     for bad in ["null", "file:///tmp", "https://user:password@gateway.example.test", "https://gateway.example.test/path", "https://gateway.example.test/?query", "https://gateway.example.test/#fragment"] {
         assert!(parse_origin(bad).is_err());
     }

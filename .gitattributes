@@ -2,5 +2,9 @@
 # (frontend/manifest.json, frontend/generated.rs), so line endings must never change.
 * text=auto eol=lf
 frontend/patches/** -text
+# The captured snapshot is also hash-checked against the pinned manifest: treat every
+# mirrored file as binary so git never normalises its bytes.
+frontend/mirror/** -text
+frontend/mirror/** binary
 *.png binary
 *.jpg binary

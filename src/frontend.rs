@@ -34,8 +34,28 @@ pub(crate) fn runtime_script() -> Response {
     super::local(response)
 }
 
+/// Rewrites one HTML document (injecting the adapter, hiding the account area, removing
+/// the vendor Clerk script). Shared by the live path and the snapshot path so both behave
+/// identically.
+pub(crate) fn rewrite_document(original: &str) -> Result<String, RewriteError> {
+    if generated::CRITICAL_BASENAMES.iter().any(|name| original.contains(name)) {
+        rewrite_html(original, generated::CRITICAL_BASENAMES)
+    } else if original.contains("clerk.skylit.ai") {
+        // A build whose chunk names we do not know: the adapter cannot be injected, and
+        // serving it would load the vendor SDK and blank the page. Fail loudly instead.
+        Err(RewriteError::Version)
+    } else {
+        Ok(original.to_owned()) // static error/placeholder document
+    }
+}
+
 pub(crate) fn is_pinned_script(path: &str) -> bool {
     generated::PATCHES.iter().any(|patch| patch.0 == path)
+}
+
+/// The embedded patched bytes and the upstream hash they were generated from.
+pub(crate) fn patch_for(path: &str) -> Option<(&'static str, &'static [u8])> {
+    generated::PATCHES.iter().find(|patch| patch.0 == path).map(|patch| (patch.1, patch.2))
 }
 
 /// A Service Worker that dismantles the original site's caching worker: it drops every
@@ -68,6 +88,11 @@ pub(crate) fn retiring_service_worker() -> Response {
 
 fn verify_hash(bytes: &[u8], expected: &str) -> bool {
     hex::encode(Sha256::digest(bytes)) == expected
+}
+
+/// SHA-256 of a snapshot file, for checking it against the pinned manifest.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
 }
 
 fn rewritten_headers(headers: &HeaderMap, content_type: &'static str) -> HeaderMap {
@@ -119,14 +144,8 @@ pub(crate) async fn rewrite_if_needed(path: &str, upstream: &mut reqwest::Respon
         // A document that loads the pinned auth chunks gets the adapter injected.
         if generated::CRITICAL_BASENAMES.iter().any(|name| original.contains(name)) {
             (Body::from(rewrite_html(&original, generated::CRITICAL_BASENAMES)?), "text/html; charset=utf-8")
-        } else if original.contains("clerk.skylit.ai") {
-            // The upstream shipped a new build whose chunk names we do not know, so the
-            // adapter cannot be injected. Serving this shell would load the real Clerk SDK
-            // and fail with an origin error deep in the console; fail loudly instead.
-            return Err(RewriteError::Version);
         } else {
-            // Static error/placeholder documents need no adapter.
-            (Body::from(original), "text/html; charset=utf-8")
+            (Body::from(rewrite_document(&original)?), "text/html; charset=utf-8")
         }
     };
     let mut response = Response::new(body);

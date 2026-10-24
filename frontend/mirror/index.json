@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-24T13:24:47.539Z",
+  "origin": "https://app.skylit.ai",
+  "routes": [
+    {
+      "route": "/",
+      "file": "__shell/index.html"
+    }
+  ],
+  "totalBytes": 7495956,
+  "entries": [
+    {
+      "path": "/",
+      "sha256": "890e68e0f19c19b0f8f3b555e03aa4c887014bb45b1d96122c8cb41a3e9e4d47",
+      "bytes": 30963,
+      "contentType": "text/html; charset=utf-8",
+      "kind": "document"
+    },
+    {
+      "path": "/_next/static/chunks/03idx7809i9wg.js",
+      "sha256": "d00d78ca19248109e94a739b2538638d84c2b3da8486bf42771eb12cd38e9ecf",
+      "bytes": 672976,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/059lgvhdezsrn.js",
+      "sha256": "4b24e07b44ea5fea9f37a85f45bcd4ea71a9832a4adce40269a41ec7bc34fe48",
+      "bytes": 586886,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/0c9pi1e5-j-p3.js",
+      "sha256": "336ae8f435aa94a0d2ba22f98db55662854dcf2cc90e2cb7451a0921787d5881",
+      "bytes": 5290,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/0cz1d0mv5g_q7.js",
+      "sha256": "0973c1d64c88adc8e3c950410cb58b288f72118d5965b78049438deb8f2f9683",
+      "bytes": 112594,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/0qn-pkl8bpzyy.js",
+      "sha256": "7b1cf841d203a203080f4708b86480a5ff1db05ba3fdc078dc2a553f487556c0",
+      "bytes": 430048,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/1lme_kp9iz9yg.js",
+      "sha256": "7742cca11504b4d6185e799912b7e3c194f985514c18602169c5ea1a11971986",
+      "bytes": 601771,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/1z8e-9ng9k3qm.css",
+      "sha256": "7a30b4fcb71f6d5974352a5bfcbea90d07c8f7c659e7170af0bf83dfe582f129",
+      "bytes": 468683,
+      "contentType": "text/css; charset=utf-8",
+      "kind": "style"
+    },
+    {
+      "path": "/_next/static/chunks/23phoh6dzkqgl.js",
+      "sha256": "b60b352fae3f3372638aa78f02eac25fe4f7b609a193fc01672c56258d068d74",
+      "bytes": 1063,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/25-sdongm5kc3.js",
+      "sha256": "53d4d3adaa8678eba4331d4addffa3ce47f584fa2b52a0d6384ac9fefd8a37af",
+      "bytes": 708829,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/261h_vmyvmzju.js",
+      "sha256": "d1972baaefa6477c2dc55773f96abae1e94e3d99b2c4eb09b17e7512c9a4c3de",
+      "bytes": 15798,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/2r4cegqs6anok.js",
+      "sha256": "4f77a5880728d7ecb305d5646ad4691d462437f7aa6f48bafc612ed1de08567f",
+      "bytes": 2031919,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/3ehfb7p2agn0l.js",
+      "sha256": "5596eaffc6caf1acfcc47d8a7d224bc5804015d7374f8c58e5e0aa403fd09da4",
+      "bytes": 428479,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/3mc_su_2hh3m4.js",
+      "sha256": "ea264abf84daae078a64a6b69b18639066b84251dedd3028a3ff1b8b7399c600",
+      "bytes": 6109,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/3wcgtq9jnv9ep.css",
+      "sha256": "40f1a78c6e3e3afbcc12b6ed1fb00c92c23acf721c72f25c1f450cd2486797fc",
+      "bytes": 8431,
+      "contentType": "text/css; charset=utf-8",
+      "kind": "style"
+    },
+    {
+      "path": "/_next/static/chunks/44ald-muhquop.js",
+      "sha256": "39ebc29c7558d4f2caf8ebaa02c08322e61a3b956986521795486141d922f75b",
+      "bytes": 1196158,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/chunks/turbopack-2j2m4hju4ksx-.js",
+      "sha256": "be50e1f1b2f38980faf268f71e107254f15c0512a1e15539eb34238282e4bba3",
+      "bytes": 9623,
+      "contentType": "application/javascript; charset=utf-8",
+      "kind": "script"
+    },
+    {
+      "path": "/_next/static/media/2f13ad8e538108e0-s.p.22iyan98j1_2e.woff2",
+      "sha256": "2ed6ac9efae6d21f51b2946176a0eef79a4043d643f9ac976e66d7fc4d57803a",
+      "bytes": 32752,
+      "contentType": "font/woff2",
+      "kind": "asset"
+    },
+    {
+      "path": "/_next/static/media/797e433ab948586e-s.p.0r6juujl39pe6.woff2",
+      "sha256": "5f3d6ad60f29d6cb708414ec6887163d63bf197377ef5417d2483ff31ace6c3b",
+      "bytes": 23108,
+      "contentType": "font/woff2",
+      "kind": "asset"
+    },
+    {
+      "path": "/_next/static/media/83afe278b6a6bb3c-s.p.2bn3s6zvc0dyp.woff2",
+      "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+      "bytes": 48432,
+      "contentType": "font/woff2",
+      "kind": "asset"
+    },
+    {
+      "path": "/_next/static/media/caa3a2e1cccd8315-s.p.0wgildi0cnwt9.woff2",
+      "sha256": "9b6f5ff45b278c744b5f379a2c4ecbaf858a842b8eaf82ac8d21b699ca16c608",
+      "bytes": 29288,
+      "contentType": "font/woff2",
+      "kind": "asset"
+    },
+    {
+      "path": "/_next/static/media/hack_bold-s.p.1x_5cpx2x_n3w.woff2",
+      "sha256": "5092b02e4d07822ab171be16682e19186094e3a45d427b73d1fc09402f77301e",
+      "bytes": 23512,
+      "contentType": "font/woff2",
+      "kind": "asset"
+    },
+    {
+      "path": "/_next/static/media/hack_regular-s.p.07d6et4x1fm36.woff2",
+      "sha256": "4b288c48e41aed70b7007b9db4932427712b0a51283e88e5e145e0d3ac63e96f",
+      "bytes": 23244,
+      "contentType": "font/woff2",
+      "kind": "asset"
+    }
+  ]
+}

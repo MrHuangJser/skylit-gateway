@@ -5,6 +5,7 @@ mod edge;
 mod profile;
 mod frontend;
 mod device_state;
+mod mirror;
 use axum::{
     body::{to_bytes, Body},
     extract::{Request, State},
@@ -40,6 +41,7 @@ pub struct Config {
     /// Same-origin/Host checks and the fixed upstream are still enforced.
     enable_open_device_access: bool,
     device_state_dir: Option<PathBuf>,
+    frontend_mirror_dir: PathBuf,
 }
 
 impl Config {
@@ -85,8 +87,14 @@ impl Config {
         if let Some(dir) = &device_state_dir {
             if !dir.is_dir() { return Err("DEVICE_STATE_DIR must be an existing directory".into()); }
         }
+        // Optional: a captured frontend snapshot. Absent means every request proxies live,
+        // which is the old behaviour, so a missing directory is not an error.
+        let frontend_mirror_dir = env::var_os("FRONTEND_MIRROR_DIR").map(PathBuf::from)
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| PathBuf::from("frontend/mirror"));
         Ok(Self { access_hash: hash(token.as_bytes()), public_origin, cookie_secure, session_file,
-            enable_browser_auth_adapter, enable_frontend_auth_rewrite, enable_open_device_access, device_state_dir })
+            enable_browser_auth_adapter, enable_frontend_auth_rewrite, enable_open_device_access, device_state_dir,
+            frontend_mirror_dir })
     }
 }
 
@@ -128,6 +136,8 @@ struct Gateway {
     sessions: Mutex<HashMap<SecretHash, Instant>>,
     edge_lease: Mutex<Option<edge::CookieLease>>,
     devices: device_state::Store,
+    /// Captured frontend snapshot; empty when absent, and then everything proxies live.
+    mirror: mirror::Mirror,
     /// (token hash, owner, verified at): the last positive upstream identity check.
     owner_check: Mutex<Option<(SecretHash, String, Instant)>>,
 }
@@ -151,7 +161,14 @@ impl Gateway {
             .user_agent("skylit-gateway/0.1 transport-only")
             .build()?;
         let devices = device_state::Store::new(config.device_state_dir.clone());
-        Ok(Self { config, upstream, client, sessions: Mutex::new(HashMap::new()), edge_lease: Mutex::new(None), devices,
+        let mirror = mirror::Mirror::load(&config.frontend_mirror_dir);
+        if mirror.is_empty() {
+            eprintln!("frontend mirror: no snapshot at {}; serving live upstream", config.frontend_mirror_dir.display());
+        } else {
+            eprintln!("frontend mirror: {} files captured {}; static assets and the shell are served locally",
+                mirror.len(), mirror.captured_at().unwrap_or("at an unknown time"));
+        }
+        Ok(Self { config, upstream, client, sessions: Mutex::new(HashMap::new()), edge_lease: Mutex::new(None), devices, mirror,
             owner_check: Mutex::new(None) })
     }
 
@@ -431,7 +448,68 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
     if request.method() != Method::GET && request.method() != Method::HEAD {
         return text(StatusCode::FORBIDDEN, "Transport-only phase: upstream mutations are disabled");
     }
+    // A captured snapshot answers static assets and the captured shell locally, so an
+    // upstream rebuild cannot rename the chunks the adapter is pinned to. Misses still
+    // proxy live, and data APIs never resolve here.
+    if gateway.config.enable_frontend_auth_rewrite {
+        if let Some(mirrored) = gateway.mirror.resolve(path) {
+            return mirrored_response(request.method(), path, mirrored).await;
+        }
+    }
     proxy(&gateway, request).await
+}
+
+/// Serves one snapshot file. Documents go through the same rewrite the live path uses, so
+/// the adapter injection, account hiding and Clerk removal behave identically.
+async fn mirrored_response(method: &Method, path: &str, mirrored: mirror::Mirrored) -> Response {
+    let Ok(bytes) = tokio::fs::read(&mirrored.file).await else {
+        // The index promised a file that is gone: fall back to the live upstream rather
+        // than serving a broken page.
+        eprintln!("frontend mirror: missing {}", mirrored.file.display());
+        return text(StatusCode::NOT_FOUND, "Not found");
+    };
+    // A pinned chunk is served as the PATCHED bytes, but only when the snapshot file is
+    // exactly the build those patches were generated from. This keeps the adapter working
+    // without contacting upstream at all.
+    if let Some((original_sha256, patched)) = frontend::patch_for(path) {
+        if frontend::sha256_hex(&bytes) != original_sha256 {
+            eprintln!("frontend mirror: {path} in the snapshot is not the pinned build");
+            return text(StatusCode::BAD_GATEWAY, "Snapshot does not match the pinned build");
+        }
+        let mut response = Response::new(Body::from(patched));
+        response.headers_mut().insert(header::CONTENT_TYPE,
+            HeaderValue::from_static("application/javascript; charset=utf-8"));
+        response.headers_mut().insert("x-skylit-gateway-adapter", HeaderValue::from_static("version-pinned"));
+        response.headers_mut().insert("x-skylit-frontend-source", HeaderValue::from_static("snapshot"));
+        return local(response);
+    }
+    if mirrored.document {
+        let Ok(text_body) = String::from_utf8(bytes) else {
+            return text(StatusCode::BAD_GATEWAY, "Snapshot document is not UTF-8");
+        };
+        return match frontend::rewrite_document(&text_body) {
+            Ok(rewritten) => {
+                let mut response = Response::new(Body::from(rewritten));
+                response.headers_mut().insert(header::CONTENT_TYPE,
+                    HeaderValue::from_static("text/html; charset=utf-8"));
+                response.headers_mut().insert("x-skylit-gateway-adapter", HeaderValue::from_static("version-pinned"));
+                response.headers_mut().insert("x-skylit-frontend-source", HeaderValue::from_static("snapshot"));
+                local(response)
+            }
+            Err(error) => error.response(),
+        };
+    }
+    let mut response = Response::new(Body::from(bytes));
+    if method == Method::HEAD { *response.body_mut() = Body::empty(); }
+    response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(mirrored.content_type));
+    response.headers_mut().insert("x-skylit-frontend-source", HeaderValue::from_static("snapshot"));
+    let response = local(response);
+    // Snapshot files are content-addressed by name and fixed for the life of the image.
+    if immutable_static_asset_for(mirrored.content_type) { cacheable(response) } else { response }
+}
+
+fn immutable_static_asset_for(content_type: &str) -> bool {
+    !content_type.starts_with("text/html")
 }
 
 const MAX_ACCESS_BODY: usize = 64 * 1024;
