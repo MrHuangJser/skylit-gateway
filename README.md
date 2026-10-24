@@ -7,7 +7,57 @@
 >
 > 接口依据见[设备状态接口清单](docs/device-state-endpoints.md)。浏览器回归脚本在 [`validation/`](validation/)；其运行结果（截图、JSON）可能含账户水印与市场数据，**只保留在本机 `validation/results/`，不提交到仓库**。
 
-## Docker 镜像
+## 部署到 VPS（当前运行方式）
+
+`deploy/` 里是生产编排：Rust 网关 + 一个**会话 sidecar**。sidecar 用你提供到 `.env` 的邮箱密码，在持久化的无头 Chromium 里完成 Skylit 登录；登录状态存在卷里，重启后不必再登录。网关只读取 sidecar 导出的**短期令牌快照**，公司设备永远拿不到密码、Cookie 或令牌。
+
+端口 23881 对外提供服务，HTTPS 由主机自身终止。
+
+```bash
+# 1) 代码
+git clone https://github.com/MrHuangJser/skylit-gateway.git ~/skylit-gateway-deploy/repo
+cd ~/skylit-gateway-deploy/repo
+
+# 2) 密钥与地址（不要提交）
+cp deploy/.env.example ~/skylit-gateway-deploy/.env   # 填入 PUBLIC_ORIGIN / GATEWAY_ACCESS_TOKEN / SKYLIT_ACCOUNT / SKYLIT_PASSWORD
+chmod 600 ~/skylit-gateway-deploy/.env
+
+# 3) 状态目录：容器以 uid 10001 运行，目录必须归它所有
+mkdir -p ~/skylit-gateway-deploy/data/{session,browser-state,device-state}
+sudo chown -R 10001:10001 ~/skylit-gateway-deploy/data
+# 并在 .env 里用绝对路径指向它们（相对路径会按 compose 文件所在目录解析）
+#   SESSION_DIR=/home/<user>/skylit-gateway-deploy/data/session
+#   BROWSER_STATE_DIR=/home/<user>/skylit-gateway-deploy/data/browser-state
+#   DEVICE_STATE_DIR=/home/<user>/skylit-gateway-deploy/data/device-state
+
+# 4) 构建并启动
+cd deploy
+docker compose -p skylit --env-file ~/skylit-gateway-deploy/.env build
+docker compose -p skylit --env-file ~/skylit-gateway-deploy/.env up -d
+```
+
+`.env` 必须包含（示例见 [`deploy/.env.example`](deploy/.env.example)）：
+
+| 变量 | 说明 |
+|---|---|
+| `PUBLIC_ORIGIN` | 用户浏览器实际打开的地址，如 `https://skylit.example.com`；Host/Origin 校验以此为准 |
+| `GATEWAY_ACCESS_TOKEN` | 43 位以上随机串（`openssl rand -hex 32`） |
+| `SKYLIT_ACCOUNT` / `SKYLIT_PASSWORD` | sidecar 自动登录用 |
+| `SESSION_DIR` / `BROWSER_STATE_DIR` / `DEVICE_STATE_DIR` | 三个状态目录的**绝对路径** |
+
+**运行状态自查**：
+
+```bash
+docker ps --filter name=skylit                                  # 两个容器都应 Up
+docker logs --tail 20 skylit-session-sidecar-1                  # 应出现 "Gateway session snapshot ready"
+curl -s -H "Host: $DOMAIN" http://127.0.0.1:23881/ -o /dev/null -w '%{http_code}\n'   # 200
+```
+
+若把 `PUBLIC_ORIGIN` 换成别的域名，重新 `up -d` 即可；Host 不匹配时网关会返回 421（防 DNS 重绑定），这是预期行为。
+
+> **安全**：23881 一旦对外开放，任何能访问该地址的人都会以你的 Skylit 账号身份使用它。请只在受控网络或域名之后暴露端口。sidecar 的密码只存在 VPS 的 `.env`（权限 600），不会进入镜像或仓库。
+
+## Docker 镜像（可选）
 
 每次推送到 `main`/`master` 或打 `v*.*.*` 标签，GitHub Actions 会构建并发布多架构镜像（`linux/amd64`、`linux/arm64`）到 GHCR。
 
