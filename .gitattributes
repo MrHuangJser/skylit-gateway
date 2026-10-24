@@ -1,0 +1,6 @@
+# Keep LF everywhere. The patched frontend chunks are verified by byte-exact SHA-256
+# (frontend/manifest.json, frontend/generated.rs), so line endings must never change.
+* text=auto eol=lf
+frontend/patches/** -text
+*.png binary
+*.jpg binary

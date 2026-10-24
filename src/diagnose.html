@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skylit Gateway · 浏览器自检</title>
+<style>
+body{font:15px system-ui,sans-serif;max-width:46rem;margin:6vh auto;padding:1.5rem;color:#202b3a;background:#f5f7fa}
+main{padding:1.6rem 2rem;background:#fff;border:1px solid #d8dfe9;border-radius:12px}
+li{margin:.45rem 0;line-height:1.5}.ok{color:#0f7a4c}.bad{color:#b42318;font-weight:600}
+code{background:#eef2f7;padding:0 .3rem;border-radius:4px}#hint{margin-top:1.2rem;padding:1rem;background:#fff7e6;border-radius:8px}
+</style>
+</head>
+<body><main>
+<h1>浏览器自检</h1>
+<p>本页只检查连通性，显示状态码和是/否，<strong>不显示令牌、Cookie 或账号信息</strong>。</p>
+<ul id="list"><li>检查中…</li></ul>
+<div id="hint" hidden></div>
+</main>
+<script>
+'use strict';
+const list = document.getElementById('list');
+const hint = document.getElementById('hint');
+const rows = [];
+function row(label, ok, detail) {
+  rows.push(`<li class="${ok ? 'ok' : 'bad'}">${ok ? '✔' : '✘'} ${label}${detail ? ' — <code>' + detail + '</code>' : ''}</li>`);
+  list.innerHTML = rows.join('');
+}
+(async () => {
+  row('页面地址', true, location.origin);
+  row('浏览器允许 Cookie', navigator.cookieEnabled, String(navigator.cookieEnabled));
+  let status = 'n/a', verified = false, profile = false, tokenShape = false, netError = '';
+  try {
+    const r = await fetch('/_gateway/auth/bootstrap', { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      redirect: 'error', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: '{}' });
+    status = String(r.status);
+    if (r.ok) {
+      const d = await r.json();
+      verified = d.source === 'upstream-verified';
+      profile = d.profileComplete === true && d.userSource === 'normal-clerk-session';
+      tokenShape = typeof d.token === 'string' && d.token.split('.').length === 3;
+    }
+  } catch (e) { netError = (e && e.name) || 'error'; }
+  row('授权引导请求', status === '200', netError ? '网络被拦截: ' + netError : 'HTTP ' + status);
+  if (status === '200') {
+    row('上游账号已验证', verified);
+    row('中转端用户资料完整', profile);
+    row('短期令牌格式正确', tokenShape);
+  }
+  let advice = '';
+  if (netError) advice = '请求在浏览器内被拦截。请在此站点禁用广告/隐私类扩展（或用无痕窗口测试）。';
+  else if (status === '403') advice = 'Origin 校验失败：浏览器发出的来源与网关配置不一致。请确认地址栏是 <code>' + location.origin + '</code>，并检查是否有修改请求头的扩展。';
+  else if (status === '503') advice = '中转端上游会话暂不可用（辅助进程可能停止或正在续期）。页面会自动重试；若持续出现请检查中转端辅助进程。';
+  else if (status === '421') advice = 'Host 不匹配：请用网关配置的地址访问，不要换成别的 IP 或主机名。';
+  else if (status === '401') advice = '设备身份无效：请清除本站 Cookie 后刷新。';
+  else if (status === '200' && verified && profile && tokenShape) advice = '自检全部通过。若首页仍显示错误，请按 Ctrl+F5 强制刷新，或用无痕窗口对比是否为扩展导致。';
+  if (advice) { hint.hidden = false; hint.innerHTML = advice; }
+})();
+</script>
+</body>
+</html>

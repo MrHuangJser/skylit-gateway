@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skylit Gateway · 本地访问验证</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:36rem;margin:10vh auto;padding:1.5rem;color:#202b3a;background:#f5f7fa}main{padding:2rem;background:white;border:1px solid #d8dfe9;border-radius:12px}label,input,button{display:block}input{box-sizing:border-box;width:100%;margin:.5rem 0 1rem;padding:.7rem}button{padding:.6rem 1.2rem}p{line-height:1.6}#message{min-height:1.5rem;color:#9d2222}
+</style>
+</head>
+<body><main>
+<h1>本地网关访问验证</h1>
+<p>当前为 <strong>transport-only</strong> 阶段。此访问码只解锁本地网关，不代表已登录 Skylit，也不代表 SSE 或原站会话已经验证。</p>
+<form id="login" method="post" action="/_gateway/login">
+<label for="token">本地访问码</label>
+<input id="token" name="accessToken" type="password" autocomplete="off" required maxlength="1024">
+<button type="submit">验证本地访问</button>
+</form>
+<p id="message" role="status" aria-live="polite"></p>
+<p>只允许上游 GET / HEAD；原站写入操作暂时禁用。此页面不加载外部资源。</p>
+</main>
+<script>
+'use strict';
+const form = document.getElementById('login');
+const token = document.getElementById('token');
+const message = document.getElementById('message');
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = form.querySelector('button');
+  button.disabled = true;
+  message.textContent = '';
+  try {
+    const response = await fetch('/_gateway/login', {
+      method: 'POST', credentials: 'same-origin', redirect: 'error',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({accessToken: token.value})
+    });
+    token.value = '';
+    if (response.ok) {
+      if (location.pathname === '/_gateway/login') location.replace('/');
+      else location.reload();
+    } else {
+      message.textContent = '验证失败。请检查访问码、访问来源及网关配置。';
+    }
+  } catch (_) {
+    token.value = '';
+    message.textContent = '无法连接本地网关。';
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

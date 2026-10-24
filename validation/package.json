@@ -1,0 +1,13 @@
+{
+  "name": "skylit-gateway-validation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test frontend-adapter.test.mjs session-refresh-policy.test.mjs",
+    "probe": "node probe.mjs"
+  },
+  "dependencies": {
+    "acorn": "8.14.0",
+    "playwright-core": "1.58.2"
+  }
+}

@@ -1,0 +1,5 @@
+.local/
+validation/node_modules/
+validation/results/
+target/
+.env

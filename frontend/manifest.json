@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "adapter": "gateway-auth-adapter.js",
+  "fullWebsiteReady": false,
+  "method": "AST export binding replacement only; vendor code never executed",
+  "assets": [
+    {
+      "path": "/_next/static/chunks/3saht1vl84b4q.js",
+      "filename": "3saht1vl84b4q.js",
+      "originalSha256": "471f5c23ef1b926f9e0319d0f3c8f426c38dd14dd6f57764c8756b9a93793712",
+      "patchedSha256": "ffedc5cf9daae9cca1f0c0e940fd3a425a528d8b670f36e3c3d161bd7010a620",
+      "originalSRI": "sha384-tYNY1SFXahLi5aBB+pXKirwqmAC5P1QsJHXwGWJECx79iWKAVxYeL3atKpU8C5HY",
+      "patchedSRI": "sha384-9Y8wLD2D2aSN5PdxClTSDgJV02Cd5sfey3Q6aHE00MVKYKmHRYgHZEtaQ6FaXrEN",
+      "bindings": [
+        {
+          "moduleId": 965389,
+          "name": "useAuth",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 965389,
+          "name": "useSignIn",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 965389,
+          "name": "useSignUp",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 265829,
+          "name": "ClerkLoaded",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 265829,
+          "name": "ClerkLoading",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 265829,
+          "name": "SignedIn",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 265829,
+          "name": "SignedOut",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 733917,
+          "name": "UserButton",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 192448,
+          "name": "ClerkProvider",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 192448,
+          "name": "SignInButton",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 192448,
+          "name": "SignOutButton",
+          "kind": "direct"
+        }
+      ]
+    },
+    {
+      "path": "/_next/static/chunks/0rvuravpijnzz.js",
+      "filename": "0rvuravpijnzz.js",
+      "originalSha256": "9153d412e1f37fc603cff77df66d29a33645972636b312fd621c44ab5efb155b",
+      "patchedSha256": "08e544c8242e56ddc6523addd440b49a93f7797a7d03710da4c56bc88e396971",
+      "originalSRI": "sha384-TqlUCXKEJV0YxFMAWFE+qgMnlM3egEtTtG4Qhg8FmrfNHkVYY5f3zsiRFkuTPpL5",
+      "patchedSRI": "sha384-mgtxJQfxFSHUIZrMuxaleCr6y7kotKc7G3Fpi7HMIO3ic+JXoR7tOEbHealD+TdA",
+      "bindings": [
+        {
+          "moduleId": 827085,
+          "name": "useClerk",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 827085,
+          "name": "useOrganization",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 827085,
+          "name": "useOrganizationList",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 827085,
+          "name": "useSession",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 827085,
+          "name": "useUser",
+          "kind": "direct"
+        }
+      ]
+    }
+  ]
+}
