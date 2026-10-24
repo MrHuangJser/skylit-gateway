@@ -20,7 +20,7 @@ const ROOT = `${FINAL}.staging`;
 // skipped with a warning (some pages only render for a signed-in browser).
 const ROUTES = (process.env.SNAPSHOT_ROUTES || [
   '/', '/atlas', '/alerts', '/dashboard', '/calendar', '/stages', '/portal', '/products',
-  '/support', '/talon', '/tempest', '/trinity', '/academy', '/heatseeker/alerts',
+  '/support', '/talon', '/tempest', '/trinity', '/academy', '/heatseeker/alerts', '/book',
   '/heatseeker/heatmaps', '/live-stages',
 ].join(',')).split(',').map(r => r.trim()).filter(Boolean);
 const MAX_TOTAL = Number(process.env.SNAPSHOT_MAX_BYTES || 64 * 1024 * 1024);

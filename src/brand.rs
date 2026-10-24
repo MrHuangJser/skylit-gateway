@@ -8,8 +8,6 @@
 //! and header names stay as they are: rewriting those would break links, persistence and
 //! the gateway's own cookie.
 
-use std::borrow::Cow;
-
 /// Where the renamed brand mark is served from.
 pub(crate) const BRAND_LOGO_PATH: &str = "/_gateway/brand/mark.svg";
 
@@ -182,10 +180,6 @@ fn replace_icon_hrefs(html: &str) -> String {
 pub(crate) fn is_text_asset(content_type: &str, path: &str) -> bool {
     content_type.starts_with("text/") || content_type.contains("javascript") || content_type.contains("json")
         || path.ends_with(".js") || path.ends_with(".css") || path.ends_with(".svg") || path.ends_with(".html")
-}
-
-pub(crate) fn apply<'a>(brand: &Brand, text: &'a str) -> Cow<'a, str> {
-    match brand.rewrite(text) { Some(out) => Cow::Owned(out), None => Cow::Borrowed(text) }
 }
 
 /// Appends the skin to a document, just before `</head>` so it wins over app styles.

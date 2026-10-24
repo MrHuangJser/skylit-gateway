@@ -1592,6 +1592,46 @@ fn brand_document_swaps_icon_links_and_manifest_carries_the_new_name() {
     assert!(manifest.contains("/_gateway/brand/mark.svg"));
 }
 
+#[tokio::test]
+async fn unknown_pages_do_not_silently_render_the_home_view() {
+    let dir = std::env::temp_dir().join(format!("skylit-mirror-404-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let root = write_mirror(&dir);
+    let now = epoch_now();
+    let file = SessionFile::new(Some(&snapshot(UPSTREAM_TEST_TOKEN, now, now + 180)));
+    let mut config = edge_config(&file);
+    config.frontend_mirror_dir = root.clone();
+    let f = fixture_with_config(config).await;
+
+    // "/" is the home view: it redirects so the client router cannot restore the last page.
+    let redirect = f.app.clone().oneshot(authorized_request(Method::GET, "/")).await.unwrap();
+    assert_eq!(redirect.status(), StatusCode::FOUND);
+    assert_eq!(redirect.headers()[header::LOCATION], HOME_ROUTE);
+
+    // The home alias still gets the shell (and therefore the app).
+    let alias = f.app.clone().oneshot(authorized_request(Method::GET, HOME_ROUTE)).await.unwrap();
+    assert_eq!(alias.status(), StatusCode::OK);
+    assert_eq!(alias.headers()["x-skylit-frontend-source"], "snapshot");
+
+    // "/dashboard" is a label in the sidebar, not a route: it opens the same home view.
+    let dashboard = f.app.clone().oneshot(authorized_request(Method::GET, "/dashboard")).await.unwrap();
+    assert_eq!(dashboard.status(), StatusCode::FOUND);
+    assert_eq!(dashboard.headers()[header::LOCATION], HOME_ROUTE);
+
+    // A page the snapshot does not have is a 404, not a page that looks like home.
+    for path in ["/academy/5baa8dcf-52a2-4506-a0fa-db0eb594d5b6", "/nowhere"] {
+        let response = f.app.clone().oneshot(authorized_request(Method::GET, path)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+        let body = body(response).await;
+        assert!(body.contains("这个页面不在当前缓存的前端版本里"), "{path}");
+        assert!(!body.contains("data-skylit-gateway-auth-runtime"), "must not boot the app: {path}");
+    }
+    // Data paths are untouched by this rule.
+    assert!(f.app.clone().oneshot(authorized_request(Method::GET, "/api/symbols")).await.unwrap().status().is_success());
+    assert!(f.mock.requests.lock().unwrap().iter().any(|r| r.uri == "/api/symbols"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn public_origin_is_a_single_origin_not_a_destination_url() {    assert_eq!(parse_origin("https://gateway.example.test/").unwrap(), ORIGIN);
     for bad in ["null", "file:///tmp", "https://user:password@gateway.example.test", "https://gateway.example.test/path", "https://gateway.example.test/?query", "https://gateway.example.test/#fragment"] {

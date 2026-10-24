@@ -389,7 +389,7 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
     // client-side route. Redirect there so "/" always lands on the same view instead of
     // re-rendering whatever the client router last showed. Query strings are preserved so
     // per-symbol links (/ ?symbol=SPXW) keep working.
-    if path == "/" && gateway.config.enable_frontend_auth_rewrite
+    if HOME_REDIRECTS.contains(&path) && gateway.config.enable_frontend_auth_rewrite
         && matches!(*request.method(), Method::GET | Method::HEAD)
     {
         let target = match request.uri().query() {
@@ -493,16 +493,40 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
         if let Some(mirrored) = gateway.mirror.resolve(path) {
             return mirrored_response(&gateway, request.method(), path, mirrored).await;
         }
-        // The app is a single-page client: upstream answers its deep links (/atlas, /talon,
-        // ...) with a 404 document. Serve the captured shell instead so the client router
-        // takes over, which is exactly what clicking a sidebar link does.
-        if page_like(path) {
+        // Aliases of the home view get the shell: the app only knows "/" (both DASHBOARD
+        // and HEATMAPS link there), and "/" is redirected below so the client router does
+        // not restore the previously open page.
+        if SHELL_ROUTES.contains(&path) {
             if let Some(shell) = gateway.mirror.shell() {
                 return mirrored_response(&gateway, request.method(), "/", shell).await;
             }
         }
+        // Any other page the snapshot does not have is answered honestly. Returning the
+        // shell made the client router render its default view, so unrelated URLs silently
+        // looked like the heatmap page.
+        if page_like(path) && gateway.mirror.shell().is_some() {
+            return unknown_page(&gateway, path);
+        }
     }
     proxy(&gateway, request).await
+}
+
+fn unknown_page(gateway: &Gateway, path: &str) -> Response {
+    let name = gateway.brand.name();
+    let html = format!(
+        r#"<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>{name}</title>
+<style>body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0b0c;color:#e9e5e2;
+font:14px/1.6 'PingFang SC','Microsoft YaHei',system-ui,sans-serif}}main{{max-width:34rem;padding:2rem;text-align:center}}
+h1{{font-size:1.1rem;font-weight:600;margin:0 0 .75rem}}code{{background:#1b1b1e;padding:.1rem .35rem;border-radius:4px}}
+p{{color:#9b9490;margin:.35rem 0}}</style>
+<main><h1>这个页面不在当前缓存的前端版本里</h1>
+<p><code>{path}</code> 没有收录进快照，所以没有可用的界面。</p>
+<p>请从侧栏进入，或使用首页 <code>/</code>。</p></main></html>"#,
+        name = name, path = path);
+    let mut response = Response::new(Body::from(html));
+    *response.status_mut() = StatusCode::NOT_FOUND;
+    response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+    local(response)
 }
 
 /// A browser page path, as opposed to an asset or a data endpoint.
@@ -595,6 +619,18 @@ async fn mirrored_response(gateway: &Gateway, method: &Method, path: &str, mirro
 fn immutable_static_asset_for(content_type: &str) -> bool {
     !content_type.starts_with("text/html")
 }
+
+/// Paths that mean "open the home view". `/` is the app's own route; `/dashboard` is what
+/// the sidebar's DASHBOARD entry is labelled, and typing it should not look like a bad URL.
+const HOME_REDIRECTS: [&str; 2] = ["/", "/dashboard"];
+
+/// Paths that render the home view. The app itself only routes "/"; "/heatmaps" is the
+/// redirect target, kept so an old bookmark still lands on the same view.
+/// The home view has no document of its own in this build: the app routes "/" to it, so
+/// these get the shell. Every other page comes from the snapshot; an uncaptured path is a
+/// 404, because serving the shell for it silently rendered the home view (an unknown route
+/// looked identical to the heatmap page).
+const SHELL_ROUTES: [&str; 2] = ["/", "/heatmaps"];
 
 /// Where "/" sends the browser. The app renders this view client-side; upstream answers
 /// it with 404, which is why the gateway serves the captured shell for it.
