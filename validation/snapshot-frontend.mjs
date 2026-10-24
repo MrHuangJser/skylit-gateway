@@ -7,14 +7,15 @@
 //
 // Refuses to write when the build no longer matches the pinned patch manifest: regenerate
 // the patches for the new build first (see validation/map-live-seam-ast.mjs).
-import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, rm, rename } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
 
 const ORIGIN = process.env.SNAPSHOT_ORIGIN || 'https://app.skylit.ai';
-const ROOT = fileURLToPath(new URL('../frontend/mirror/', import.meta.url));
+const FINAL = fileURLToPath(new URL('../frontend/mirror/', import.meta.url).href);
+const ROOT = `${FINAL}.staging`;
 // Every page the owner navigates to. Routes that upstream answers with a non-200 are
 // skipped with a warning (some pages only render for a signed-in browser).
 const ROUTES = (process.env.SNAPSHOT_ROUTES || [
@@ -25,6 +26,8 @@ const ROUTES = (process.env.SNAPSHOT_ROUTES || [
 const MAX_TOTAL = Number(process.env.SNAPSHOT_MAX_BYTES || 64 * 1024 * 1024);
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 
+await rm(ROOT, { recursive: true, force: true });
+await mkdir(ROOT, { recursive: true });
 const manifest = JSON.parse(await readFile(new URL('../frontend/manifest.json', import.meta.url), 'utf8'));
 const pinnedByPath = new Map(manifest.assets.map(a => [a.path, a]));
 
@@ -112,7 +115,7 @@ while (queue.length) {
 // 3. Every pinned chunk must be present, otherwise the mirror cannot be served safely.
 for (const [pinnedPath, asset] of pinnedByPath) {
   const entry = seen.get(pinnedPath);
-  assert.ok(entry, `mirror is missing the pinned chunk ${pinnedPath}`);
+  assert.ok(entry, `mirror is missing the pinned chunk ${pinnedPath}; upstream has moved on, regenerate the patches first`);
   assert.equal(entry.sha256, asset.originalSha256,
     `mirror captured a different build for ${pinnedPath}; regenerate the patches first`);
 }
@@ -131,6 +134,10 @@ const index = {
 };
 await writeFile(join(ROOT, 'index.json'), JSON.stringify(index, null, 2) + '\n');
 
+// Swap the completed capture into place only now: a partial capture is worthless and
+// must never replace a working snapshot.
+await rm(FINAL, { recursive: true, force: true }).catch(() => {});
+await rename(ROOT, FINAL);
 const byKind = Object.groupBy(index.entries, e => e.kind);
 console.log(JSON.stringify({
   capturedAt: index.capturedAt,

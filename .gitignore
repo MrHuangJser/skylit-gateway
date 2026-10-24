@@ -6,3 +6,6 @@ target/
 # Deployment secrets (Skylit password, gateway token). Only .env.example is committed.
 deploy/.env
 *.env.docker
+
+# In-progress snapshot capture; only a completed directory is committed.
+frontend/mirror.staging/
