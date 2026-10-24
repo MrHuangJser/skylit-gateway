@@ -17,7 +17,29 @@
   // The upstream caching Service Worker would serve the unwritten shell from its cache
   // and bypass this adapter. Remove any registration and cached documents on load, and
   // reload once (guarded) so the current tab stops being controlled by it.
-  function retireServiceWorkers() {
+  // The vendor SDK is loaded at runtime by `loadClerkJsScript`, which returns early when
+  // `window.Clerk` already looks loaded. Defining this stub before any app code runs stops
+  // the request to clerk.skylit.ai (the vendor rejects this domain and the failure blanks
+  // the whole tree). Every auth hook the app uses comes from this adapter, not the stub.
+  function installClerkStub() {
+    if (window.Clerk && typeof window.Clerk.load === 'function') return;
+    var noop = function () {};
+    var stop = function () { return Promise.resolve(); };
+    var stub = {
+      version: '5.128.0', status: 'ready', loaded: true, publishableKey: '',
+      client: null, session: null, user: null, organization: null,
+      load: function () { return Promise.resolve(stub); },
+      addListener: function () { return noop; }, removeListener: noop,
+      addOnLoaded: function (cb) { try { cb(stub); } catch (_) {} return noop; },
+      signOut: stop, openSignIn: noop, openSignUp: noop, openUserProfile: noop,
+      redirectToSignIn: noop, redirectToSignUp: noop, redirectToUserProfile: noop,
+      handleRedirectCallback: stop, authenticateWithMetamask: stop,
+      __unstable__updateProps: noop, __unstable__environment: undefined,
+    };
+    try { Object.defineProperty(window, 'Clerk', { value: stub, writable: true, configurable: true }); }
+    catch (_) { window.Clerk = stub; }
+  }
+  installClerkStub();
     try {
       var container = navigator.serviceWorker;
       if (!container || typeof container.getRegistrations !== 'function') return;
