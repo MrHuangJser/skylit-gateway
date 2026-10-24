@@ -4,8 +4,10 @@ use skylit_gateway::{router, Config};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env().map_err(std::io::Error::other)?;
     let app = router(config)?;
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
-    eprintln!("skylit-gateway listening on 0.0.0.0:8080; listener readiness does not validate upstream login; see /_gateway/capabilities");
+    // The container keeps 0.0.0.0:8080; BIND_ADDR lets a local verification run use loopback.
+    let addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_owned());
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    eprintln!("skylit-gateway listening on {addr}; listener readiness does not validate upstream login; see /_gateway/capabilities");
     axum::serve(listener, app).with_graceful_shutdown(shutdown()).await?;
     Ok(())
 }

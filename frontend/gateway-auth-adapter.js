@@ -40,6 +40,7 @@
     catch (_) { window.Clerk = stub; }
   }
   installClerkStub();
+  function retireServiceWorkers() {
     try {
       var container = navigator.serviceWorker;
       if (!container || typeof container.getRegistrations !== 'function') return;

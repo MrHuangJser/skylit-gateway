@@ -95,12 +95,9 @@ export function patchAsset(source, filename, { requireSourcePatches = true } = {
   // Source-level edits for code outside the export table. Their exact offsets are
   // recorded so a byte-level reconstruction can undo them precisely.
   const sourceEdits = [];
-  for (const patch of SOURCE_PATCHES[filename] ?? []) {
+  for (const patch of (requireSourcePatches ? SOURCE_PATCHES[filename] ?? [] : [])) {
     const at = output.indexOf(patch.find);
-    if (at < 0) {
-      if (!requireSourcePatches) continue; // synthetic fixture
-      throw new Error(`Expected exactly one "${patch.find}" in ${filename}; got 0`);
-    }
+    if (at < 0) throw new Error(`Expected exactly one "${patch.find}" in ${filename}; got 0`);
     if (output.indexOf(patch.find, at + 1) >= 0) throw new Error(`"${patch.find}" is not unique in ${filename}`);
     output = output.slice(0, at) + patch.replace + output.slice(at + patch.find.length);
     sourceEdits.push({ start: at, end: at + patch.find.length, original: patch.find, replacement: patch.replace });
