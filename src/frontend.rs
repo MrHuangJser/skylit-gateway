@@ -49,11 +49,25 @@ pub(crate) fn rewrite_document(original: &str) -> Result<String, RewriteError> {
     }
 }
 
-/// Identifies the pinned build. Changes only when the patches are regenerated, so it works
-/// as a cache-busting tag for the static URLs the document loads.
+/// Identifies the pinned build AND the active brand. Changes whenever the patches are
+/// regenerated or the branding changes, so it works as a cache-busting tag: without the
+/// brand part, re-skinning would keep serving the previously cached, unbranded chunks.
 pub(crate) fn snapshot_tag() -> &'static str {
-    let sha = generated::PATCHES.first().map(|patch| patch.1).unwrap_or("00000000");
-    &sha[..8]
+    static TAG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TAG.get_or_init(|| {
+        let sha = generated::PATCHES.first().map(|patch| patch.1).unwrap_or("00000000");
+        let name = std::env::var("BRAND_NAME").ok().map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty()).unwrap_or_else(|| "娃哈哈".to_owned());
+        let enabled = std::env::var("BRAND_ENABLED").map(|v| v.trim() != "false").unwrap_or(true);
+        if !enabled || name.is_empty() {
+            return sha[..8].to_owned();
+        }
+        // FNV-1a: deterministic across restarts, which a default hasher is not guaranteed
+        // to be. Only the tag has to be stable, not cryptographic.
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for byte in name.as_bytes() { hash ^= u64::from(*byte); hash = hash.wrapping_mul(0x100_0000_01b3); }
+        format!("{}-{:08x}", &sha[..8], (hash ^ (hash >> 32)) as u32)
+    })
 }
 
 /// Appends the build tag to every static asset URL in the document.
