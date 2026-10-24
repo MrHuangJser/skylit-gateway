@@ -2,15 +2,14 @@
 // registration `X.s([...], <moduleId>)`, list which target auth names it exports.
 // Text slicing (regex) proved unreliable: adjacent registrations got merged.
 import { parse } from 'acorn';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, readdir } from 'node:fs/promises';
 
 const DIR = new URL('../.local/live-chunks/', import.meta.url);
 const TARGET = ['ClerkProvider', 'SignedIn', 'SignedOut', 'ClerkLoaded', 'ClerkLoading', 'useAuth', 'useUser',
   'useSession', 'useClerk', 'useSignIn', 'useSignUp', 'UserButton', 'SignInButton', 'SignOutButton',
   'useOrganization', 'useOrganizationList'];
-const report = await readFile(new URL('report.json', DIR), 'utf8').then(JSON.parse, () => null);
-const FILES = report?.chunks?.length ? report.chunks.map(p => p.split('/').pop())
-  : ['3ehfb7p2agn0l.js', '44ald-muhquop.js'];
+// Scan whatever the fetch step downloaded; chunk names change on every upstream build.
+const FILES = (await readdir(DIR)).filter(name => name.endsWith('.js'));
 
 function walk(node, fn) {
   if (!node || typeof node !== 'object') return;

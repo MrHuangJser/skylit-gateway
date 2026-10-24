@@ -1351,10 +1351,13 @@ async fn every_app_page_gets_the_adapter_not_only_home_and_atlas() {
     let now = epoch_now();
     let file = SessionFile::new(Some(&snapshot(UPSTREAM_TEST_TOKEN, now, now + 180)));
     let f = fixture_with_config(edge_config(&file)).await;
-    // Use the chunk names the patches are currently pinned to, read from the manifest.
+    // Build the page from whatever chunks the manifest currently pins, so this test does
+    // not hardcode a build.
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("frontend/manifest.json").expect("manifest")).expect("json");
     let page = format!("<!doctype html><html><head>{}</head><body>app</body></html>",
-        ["3ehfb7p2agn0l.js", "44ald-muhquop.js"].iter()
-            .map(|n| format!("<script src=\"/_next/static/chunks/{n}\" async></script>"))
+        manifest["assets"].as_array().expect("assets").iter()
+            .map(|asset| format!("<script src=\"{}\" async></script>", asset["path"].as_str().expect("path")))
             .collect::<String>());
     let mut html = HeaderMap::new();
     html.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));

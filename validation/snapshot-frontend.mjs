@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
 
 const ORIGIN = process.env.SNAPSHOT_ORIGIN || 'https://app.skylit.ai';
-const FINAL = fileURLToPath(new URL('../frontend/mirror/', import.meta.url).href);
+const FINAL = join(fileURLToPath(new URL('../frontend/mirror/', import.meta.url)), '..', 'mirror');
 const ROOT = `${FINAL}.staging`;
 // Every page the owner navigates to. Routes that upstream answers with a non-200 are
 // skipped with a warning (some pages only render for a signed-in browser).
@@ -70,8 +70,15 @@ const fileFor = path => join(ROOT, path.replace(/^\//, ''));
 const shellFileFor = route => join(ROOT, '__shell', route === '/' ? 'index.html'
   : `${route.replace(/^\//, '').replace(/\//g, '__')}/index.html`);
 
+// Protected routes answer 404 for an anonymous client. A short-lived bearer (read from the
+// gateway's own snapshot) only selects the document; no account data is rendered into it.
+const BEARER = (process.env.SNAPSHOT_BEARER || '').trim();
+
 async function fetchOne(path) {
-  const res = await fetch(`${ORIGIN}${path}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(30000) });
+  const headers = { 'User-Agent': UA };
+  if (BEARER) headers.Authorization = `Bearer ${BEARER}`;
+  if (!/\.(js|css|woff2?|png|jpe?g|svg)$/.test(path)) headers.Accept = 'text/html';
+  const res = await fetch(`${ORIGIN}${path}`, { headers, signal: AbortSignal.timeout(30000) });
   if (res.status !== 200) throw new Error(`${path} -> ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   return { buf, upstreamType: res.headers.get('content-type') || '' };
@@ -80,7 +87,12 @@ async function fetchOne(path) {
 // 1. Capture the HTML shells first; they define the chunk set for their build.
 const shellFiles = new Map();
 for (const route of ROUTES) {
-  const { buf } = await fetchOne(route);
+  // A route this deployment does not have is skipped, not fatal: the gateway serves the
+  // captured root shell for unmatched deep links, so a missing route is not a failure.
+  let fetched;
+  try { fetched = await fetchOne(route); }
+  catch (error) { console.warn(`skip route ${route}: ${String(error.message).slice(0, 60)}`); continue; }
+  const { buf } = fetched;
   const html = buf.toString('utf8');
   shellFiles.set(route, shellFileFor(route));
   for (const ref of collectRefs(html)) enqueue(ref);

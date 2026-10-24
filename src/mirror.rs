@@ -71,7 +71,7 @@ impl Mirror {
         };
         let mut files = HashMap::new();
         for entry in index.entries {
-            let stored = entry.path.trim_start_matches('/').to_owned();
+            let stored = normalize_relative(&entry.path);
             files.insert(entry.path, (
                 stored,
                 entry.content_type.unwrap_or_else(|| "application/octet-stream".to_owned()),
@@ -82,7 +82,9 @@ impl Mirror {
         // (as a captured file), and the route must resolve as a document, not an asset.
         for route in index.routes {
             // Documents are stored under __shell/; the served path is the route itself.
-            files.insert(route.route, (route.file, "text/html; charset=utf-8".to_owned(), true));
+            // The stored file is relative to the snapshot root, with or without a leading
+            // separator depending on how it was recorded.
+            files.insert(route.route, (normalize_relative(&route.file), "text/html; charset=utf-8".to_owned(), true));
         }
         Self { root, entries: files.len(), files, captured_at: index.captured_at }
     }
@@ -108,6 +110,11 @@ impl Mirror {
             document: *document,
         })
     }
+}
+
+/// Strips leading separators so `root.join(relative)` always stays inside the snapshot.
+fn normalize_relative(value: &str) -> String {
+    value.trim_start_matches(['/', '\\']).to_owned()
 }
 
 /// The content types come from a small fixed set in the snapshot index; mapping them to
