@@ -23,21 +23,15 @@
       if (!container || typeof container.getRegistrations !== 'function') return;
       container.getRegistrations().then(function (regs) {
         if (!regs || !regs.length) return;
-        var dropped = false;
-        regs.forEach(function (reg) { try { reg.unregister(); dropped = true; } catch (_) {} });
-        var cached = (window.caches && typeof window.caches.keys === 'function')
-          ? window.caches.keys().then(function (keys) { return Promise.all(keys.map(function (k) { return window.caches.delete(k); })); })
-          : Promise.resolve();
-        cached.catch(function () {}).then(function () {
-          if (!dropped) return;
-          // One guarded reload so the page is rebuilt from the proxy, not from cache.
-          try {
-            var key = 'skylit-gateway:sw-retired';
-            if (window.sessionStorage.getItem(key) === '1') return;
-            window.sessionStorage.setItem(key, '1');
-            window.location.reload();
-          } catch (_) {}
-        });
+        // Drop the registrations and their caches. No reload here: the site registers a
+        // worker again on every load, so reloading would loop. The next navigation is
+        // already served from the proxy.
+        regs.forEach(function (reg) { try { reg.unregister(); } catch (_) {} });
+        if (window.caches && typeof window.caches.keys === 'function') {
+          window.caches.keys().then(function (keys) {
+            keys.forEach(function (k) { try { window.caches.delete(k); } catch (_) {} });
+          }).catch(function () {});
+        }
       }).catch(function () {});
     } catch (_) {}
   }

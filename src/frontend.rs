@@ -39,18 +39,16 @@ pub(crate) fn is_pinned_script(path: &str) -> bool {
 }
 
 /// A Service Worker that dismantles the original site's caching worker: it drops every
-/// cache, unregisters itself and reloads the controlled tabs so they fetch the rewritten
-/// shell. Served with no-store so the browser re-checks it on each navigation.
+/// cache and unregisters itself. It must NOT reload the open tabs: the site registers
+/// this file on every load, so reloading here would loop forever. Unregistering is
+/// enough — the next navigation is then served by the proxy instead of a cache.
+/// Served with no-store so the browser re-checks it on each navigation.
 const RETIRING_SW: &str = r#"// Managed by the gateway: the upstream caching worker is retired on company devices.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     try { for (const key of await caches.keys()) await caches.delete(key); } catch (e) {}
     try { await self.registration.unregister(); } catch (e) {}
-    try {
-      const clients = await self.clients.matchAll({ type: 'window' });
-      for (const client of clients) client.navigate(client.url).catch(() => {});
-    } catch (e) {}
   })());
 });
 // Never serve a cached document: let every request go to the network.
