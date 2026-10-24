@@ -3,3 +3,6 @@ validation/node_modules/
 validation/results/
 target/
 .env
+# Deployment secrets (Skylit password, gateway token). Only .env.example is committed.
+deploy/.env
+*.env.docker

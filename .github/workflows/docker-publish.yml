@@ -1,9 +1,12 @@
 name: Docker publish
 
-# Publishes to GitHub Container Registry: ghcr.io/<owner>/skylit-gateway
-#   - push to main/master  -> :main / :master, :sha-<short>, :latest (default branch only)
+# Publishes a multi-arch image to GitHub Container Registry: ghcr.io/<owner>/skylit-gateway
+#   - push to main/master  -> :latest (default branch), :<branch>, :sha-<short>
 #   - push tag v1.2.3      -> :1.2.3, :1.2, :1, :sha-<short>
-#   - manual run           -> :sha-<short> (and branch tag)
+#   - manual run           -> :<branch>, :sha-<short>
+#
+# Each architecture builds on a NATIVE runner (no QEMU emulation, which made the arm64
+# Rust build take ~35 min), pushes by digest, then one job merges them into a manifest.
 on:
   push:
     branches: [main, master]
@@ -13,43 +16,109 @@ on:
 permissions:
   contents: read
   packages: write
-  # Required for signed build provenance attestations.
   id-token: write
   attestations: write
 
 concurrency:
   group: docker-publish-${{ github.ref }}
-  cancel-in-progress: false
+  # A newer push supersedes an in-flight publish of the same ref.
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
 
-      # GHCR image names must be lowercase.
-      - name: Image name
-        id: image
-        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Names
+        id: names
+        run: |
+          echo "image=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          platform='${{ matrix.platform }}'
+          echo "pair=${platform//\//-}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Metadata (tags, labels)
+      - name: Labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
-          images: ${{ steps.image.outputs.name }}
+          images: ${{ steps.names.outputs.image }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ steps.names.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ steps.names.outputs.pair }}
+          cache-to: type=gha,scope=${{ steps.names.outputs.pair }},mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest='${{ steps.build.outputs.digest }}'
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ steps.names.outputs.pair }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Publish manifest
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Image name
+        id: names
+        run: echo "image=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Metadata (tags)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.names.outputs.image }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -58,23 +127,23 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push
-        id: push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: mode=max
-          sbom: true
+      - name: Create and push multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ steps.names.outputs.image }}@sha256:%s ' *)
+
+      - name: Inspect and capture digest
+        id: manifest
+        run: |
+          tag='${{ steps.names.outputs.image }}:${{ steps.meta.outputs.version }}'
+          docker buildx imagetools inspect "$tag"
+          echo "digest=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' | jq -r .digest)" >> "$GITHUB_OUTPUT"
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
-          subject-name: ${{ steps.image.outputs.name }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-name: ${{ steps.names.outputs.image }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
           push-to-registry: true

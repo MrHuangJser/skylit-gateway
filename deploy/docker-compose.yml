@@ -1,0 +1,70 @@
+# Skylit gateway on a VPS.
+#   gateway         : the Rust proxy, published on 23881
+#   session-sidecar : headless Chromium that signs in and exports a short-lived token
+#
+# The sidecar owns the Skylit session; the gateway only ever reads a token snapshot.
+# Company devices talk to the gateway and never receive cookies, passwords or tokens.
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: skylit-gateway:vps
+    restart: unless-stopped
+    depends_on:
+      - session-sidecar
+    ports:
+      # Reachable on this host's port 23881; HTTPS is terminated in front of it.
+      - "0.0.0.0:23881:8080"
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN, e.g. https://skylit.example.com}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      GATEWAY_ACCESS_TOKEN: ${GATEWAY_ACCESS_TOKEN:?set a random 43+ character token}
+      UPSTREAM_SESSION_FILE: /run/skylit-session/snapshot.json
+      ENABLE_BROWSER_AUTH_ADAPTER: "true"
+      ENABLE_FRONTEND_AUTH_REWRITE: "true"
+      ENABLE_OPEN_DEVICE_ACCESS: "true"
+      DEVICE_STATE_DIR: /var/lib/skylit-device-state
+    volumes:
+      # Token snapshot written by the sidecar; read-only here.
+      - session:/run/skylit-session:ro
+      # Per-device layouts/drawings/watchlists, kept across restarts.
+      - device-state:/var/lib/skylit-device-state
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      # The image has no curl; the runtime image's bash can test the listening port.
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  session-sidecar:
+    build:
+      context: ..
+      dockerfile: deploy/session-sidecar.Dockerfile
+    image: skylit-session-sidecar:vps
+    restart: unless-stopped
+    environment:
+      SKYLIT_ACCOUNT: ${SKYLIT_ACCOUNT:?set the Skylit account email}
+      SKYLIT_PASSWORD: ${SKYLIT_PASSWORD:?set the Skylit account password}
+      SESSION_OUT_DIR: /session
+      BROWSER_STATE_DIR: /state
+      SESSION_MIN_REMAINING_SECONDS: ${SESSION_MIN_REMAINING_SECONDS:-45}
+    volumes:
+      - session:/session
+      # Persistent Chromium profile: the sign-in survives restarts.
+      - browser-state:/state
+    security_opt:
+      - no-new-privileges:true
+    # Chromium needs a larger /dev/shm than the 64 MB default.
+    shm_size: "512mb"
+
+volumes:
+  session:
+  browser-state:
+  device-state:
