@@ -124,12 +124,37 @@ async function ensureSession(page) {
   await page.waitForFunction(() => window.Clerk?.session?.status === 'active', undefined, { timeout: 45000 });
 }
 
+/// A transient evaluate failure must not be mistaken for a signed-out session: the app
+/// page can be mid-navigation while Clerk re-initializes. Reload first, sign in last.
+async function ensureReadyPage(page) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const active = await page.evaluate(() => window.Clerk?.session?.status === 'active').catch(() => false);
+    if (active) return true;
+    if (attempt === 0) {
+      await page.goto(APP, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+      await page.waitForFunction(() => Boolean(window.Clerk), undefined, { timeout: 30000 }).catch(() => {});
+      await page.waitForFunction(() => window.Clerk?.session?.status === 'active', undefined, { timeout: 30000 }).catch(() => {});
+    }
+  }
+  return false;
+}
+
+let lastReadError = '';
+
 async function refresh(page) {
   if (stopping) return;
   try {
-    const selected = await selectFreshSession(
-      force => page.evaluate(readBrowserSession, { exportProfile: true, force }),
-      undefined, minimumRemainingSeconds);
+    if (!await ensureReadyPage(page)) {
+      throw new Error('page is not in an active session');
+    }
+    const selected = await selectFreshSession(async force => {
+      try {
+        return await page.evaluate(readBrowserSession, { exportProfile: true, force });
+      } catch (error) {
+        lastReadError = String(error?.message || error).replace(/\s+/g, ' ').slice(0, 120);
+        throw error;
+      }
+    }, undefined, minimumRemainingSeconds);
     const { result, token, expiresAt, capturedAt } = selected;
     if (result.profile) await writeAtomic(result.profile, profilePath);
     await writeAtomic({ bearerToken: token, expiresAt, capturedAt }, snapshotPath);
@@ -141,7 +166,8 @@ async function refresh(page) {
     timer = setTimeout(() => void refresh(page), delay * 1000);
   } catch (error) {
     failures++;
-    console.error(`refresh failed (${failures}/${retryLimit}): ${String(error?.message || error).slice(0, 160)}`);
+    const detail = lastReadError || String(error?.message || error);
+    console.error(`refresh failed (${failures}/${retryLimit}): ${detail.slice(0, 160)}`);
     if (failures >= retryLimit) {
       await writeAtomic({ bearerToken: '', expiresAt: 0, capturedAt: 0 }, snapshotPath).catch(() => {});
       await status('session-unavailable', { failures });
@@ -149,8 +175,9 @@ async function refresh(page) {
       await stop('session-unavailable');
       return;
     }
-    await status(`retrying-${failures}`, { failures });
-    if ((await clerkState(page)).status !== 'active') await ensureSession(page).catch(() => {});
+    await status(`retrying-${failures}`, { failures, detail: detail.slice(0, 120) });
+    // Only re-authenticate when the session is genuinely gone, not on a page hiccup.
+    if (!await ensureReadyPage(page)) await ensureSession(page).catch(() => {});
     timer = setTimeout(() => void refresh(page), Math.min(30, 2 ** failures) * 1000);
   }
 }
@@ -171,6 +198,8 @@ try {
   context = await chromium.launchPersistentContext(resolve(stateDir, 'profile'), {
     headless, args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
     viewport: { width: 1280, height: 900 }, locale: 'en-US',
+    // The VPS image resolves its bundled Chromium; a desktop test can override it.
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
   });
   const page = context.pages()[0] || await context.newPage();
   await ensureSession(page);

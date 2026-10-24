@@ -14,8 +14,11 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
 COPY validation/session-sidecar.mjs validation/session-refresh-policy.mjs ./
 
-# Non-root: the base image ships an `ubuntu` user (uid 1000).
-RUN mkdir -p /state /session && chown -R 1000:1000 /state /session /app
-USER 1000:1000
+# Same identity as the gateway image: the snapshot files are 0600 and the gateway
+# runs as 10001, so both sides must share that uid.
+RUN mkdir -p /state /session && chown -R 10001:10001 /state /session /app
+USER 10001:10001
+# Chromium writes its profile and caches under HOME.
+ENV HOME=/state
 
 ENTRYPOINT ["node", "/app/session-sidecar.mjs"]

@@ -29,7 +29,8 @@ services:
       # Token snapshot written by the sidecar; read-only here.
       - session:/run/skylit-session:ro
       # Per-device layouts/drawings/watchlists, kept across restarts.
-      - device-state:/var/lib/skylit-device-state
+      # A bind mount lets the host account own the directory as uid 10001.
+      - ${DEVICE_STATE_DIR:-./data/device-state}:/var/lib/skylit-device-state
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -67,4 +68,3 @@ services:
 volumes:
   session:
   browser-state:
-  device-state:
