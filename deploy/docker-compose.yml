@@ -6,10 +6,12 @@
 # Company devices talk to the gateway and never receive cookies, passwords or tokens.
 services:
   gateway:
+    # Built locally (wslc) and published to GHCR; the VPS only pulls it, which avoids
+    # compiling Rust on a small box. GATEWAY_IMAGE selects the tag to run.
     build:
       context: ..
       dockerfile: Dockerfile
-    image: skylit-gateway:vps
+    image: ${GATEWAY_IMAGE:-ghcr.io/mrhuangjser/skylit-gateway:main}
     restart: unless-stopped
     depends_on:
       - session-sidecar
