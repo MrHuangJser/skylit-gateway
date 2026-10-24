@@ -14,9 +14,8 @@
 本机使用 **wslc**（不需要 Docker Desktop）拉取并运行：
 
 ```powershell
-# 包是私有的话先登录（用户名 + 具有 read:packages 权限的 GitHub Token）
-wslc login ghcr.io
 wslc pull ghcr.io/mrhuangjser/skylit-gateway:latest
+# 若把包改为私有：先 wslc login ghcr.io（用户名 + 具有 read:packages 权限的 GitHub Token）
 
 $root = (Get-Location).Path
 wslc run -d --name skylit-gateway-live -p 127.0.0.1:48175:8080 `
@@ -39,7 +38,7 @@ GitHub Actions 的 Linux 运行器上没有 wslc，所以 CI/发布流水线里�
 
 镜像附带 SBOM 与构建来源证明（provenance attestation）。镜像内**不包含**任何账号、令牌、Cookie 或浏览器配置；运行时通过环境变量和挂载提供（见下文）。
 
-> 首次发布后，GHCR 包默认是**私有**的。如需匿名拉取，到 GitHub → Packages → `skylit-gateway` → Package settings 里改为 Public。
+> 当前 GHCR 包继承了公开仓库的可见性，**是公开的**，任何人都能匿名拉取镜像（镜像里不含账号、令牌或个人数据）。如不希望公开，到 GitHub → Packages → `skylit-gateway` → Package settings 改为 Private，之后本机先 `wslc login ghcr.io` 再拉取。
 
 ## CI
 
