@@ -39,7 +39,7 @@ pub(crate) fn runtime_script() -> Response {
 /// identically.
 pub(crate) fn rewrite_document(original: &str) -> Result<String, RewriteError> {
     if generated::CRITICAL_BASENAMES.iter().any(|name| original.contains(name)) {
-        rewrite_html(original, generated::CRITICAL_BASENAMES)
+        Ok(version_static_urls(&rewrite_html(original, generated::CRITICAL_BASENAMES)?))
     } else if original.contains("clerk.skylit.ai") {
         // A build whose chunk names we do not know: the adapter cannot be injected, and
         // serving it would load the vendor SDK and blank the page. Fail loudly instead.
@@ -47,6 +47,38 @@ pub(crate) fn rewrite_document(original: &str) -> Result<String, RewriteError> {
     } else {
         Ok(original.to_owned()) // static error/placeholder document
     }
+}
+
+/// Identifies the pinned build. Changes only when the patches are regenerated, so it works
+/// as a cache-busting tag for the static URLs the document loads.
+pub(crate) fn snapshot_tag() -> &'static str {
+    let sha = generated::PATCHES.first().map(|patch| patch.1).unwrap_or("00000000");
+    &sha[..8]
+}
+
+/// Appends the build tag to every static asset URL in the document.
+///
+/// A CDN can hold a copy of `/_next/static/chunks/x.js` cached as `immutable` from before
+/// the gateway started patching that path. That entry cannot be invalidated from here, and
+/// because the bytes at that URL changed (raw -> patched) the cached copy is now wrong.
+/// Tagging the URL gives the browser and the CDN a cache key that only exists once the
+/// patches for that build exist, so a stale copy can never be selected again.
+fn version_static_urls(html: &str) -> String {
+    let tag = snapshot_tag();
+    let mut out = String::with_capacity(html.len() + 256);
+    let mut rest = html;
+    while let Some(start) = rest.find("/_next/static/") {
+        out.push_str(&rest[..start]);
+        let tail = &rest[start..];
+        // The URL ends at a quote, whitespace, or a delimiter; keep any existing query.
+        let end = tail.find(['"', '\'', '`', ' ', ')', '>', '\\', '\n']).unwrap_or(tail.len());
+        let (url, after) = tail.split_at(end);
+        out.push_str(url);
+        if !url.contains('?') { out.push_str("?_snap="); out.push_str(tag); }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 pub(crate) fn is_pinned_script(path: &str) -> bool {
@@ -141,12 +173,7 @@ pub(crate) async fn rewrite_if_needed(path: &str, upstream: &mut reqwest::Respon
         (Body::from(patch.2), "application/javascript; charset=utf-8")
     } else {
         let original = String::from_utf8(bytes).map_err(|_| RewriteError::Encoding)?;
-        // A document that loads the pinned auth chunks gets the adapter injected.
-        if generated::CRITICAL_BASENAMES.iter().any(|name| original.contains(name)) {
-            (Body::from(rewrite_html(&original, generated::CRITICAL_BASENAMES)?), "text/html; charset=utf-8")
-        } else {
-            (Body::from(rewrite_document(&original)?), "text/html; charset=utf-8")
-        }
+        (Body::from(rewrite_document(&original)?), "text/html; charset=utf-8")
     };
     let mut response = Response::new(body);
     *response.status_mut() = if patch.is_some() { StatusCode::OK } else { status };

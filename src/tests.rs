@@ -1521,6 +1521,30 @@ async fn snapshot_serves_pinned_chunks_patched_and_refuses_a_foreign_build() {
 }
 
 #[test]
+fn document_static_urls_carry_the_build_tag_so_a_cdn_cannot_serve_a_stale_copy() {
+    use crate::frontend::{rewrite_document, snapshot_tag};
+    // Every pinned chunk must appear, or the rewrite correctly refuses the document.
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("frontend/manifest.json").expect("manifest")).expect("json");
+    let pinned: String = manifest["assets"].as_array().expect("assets").iter()
+        .map(|asset| format!("<script src=\"{}\" async></script>", asset["path"].as_str().expect("path")))
+        .collect();
+    let html = rewrite_document(&format!("<html><head>{pinned}\
+<script src=\"/_next/static/chunks/a.js\" async></script>\
+<link href=\"/_next/static/css/b.css\" rel=\"stylesheet\">\
+<script src=\"/_next/static/chunks/other.js?v=1\"></script>\
+</head><body>plain</body></html>")).unwrap_or_else(|_| panic!("rewrite failed"));
+    let tag = snapshot_tag();
+    assert!(html.contains(&format!("/_next/static/chunks/a.js?_snap={tag}")), "unpinned asset tagged");
+    assert!(html.contains(&format!("/_next/static/css/b.css?_snap={tag}")));
+    // An existing query is left alone: changing it could break the site's own versioning.
+    assert!(html.contains("/_next/static/chunks/other.js?v=1"));
+    assert!(!html.contains("?_snap={tag}?_snap"), "must not double-tag");
+    // Non-static URLs are untouched.
+    assert!(!html.contains("/api/symbols?_snap"));
+}
+
+#[test]
 fn public_origin_is_a_single_origin_not_a_destination_url() {    assert_eq!(parse_origin("https://gateway.example.test/").unwrap(), ORIGIN);
     for bad in ["null", "file:///tmp", "https://user:password@gateway.example.test", "https://gateway.example.test/path", "https://gateway.example.test/?query", "https://gateway.example.test/#fragment"] {
         assert!(parse_origin(bad).is_err());
