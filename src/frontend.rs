@@ -243,7 +243,7 @@ aside[data-component=\"sidebar\"] a[href=\"/flow\"],\
 aside[data-component=\"sidebar\"] a[href=\"/developer\"],\
 aside[data-component=\"sidebar\"] a[href^=\"/developer/\"],\
 aside[data-component=\"sidebar\"] a[href=\"/affiliate\"],\
-aside[data-component=\"sidebar\"] a[href^=\"/affiliate/\"]{display:none!important}</style>";
+aside[data-component=\"sidebar\"] a[href^=\"/affiliate/\"],aside li:has(> a[href=\"/\"]),aside li:has(> a[href=\"/alerts\"]),aside li:has(> a[href=\"/portal\"]),aside li:has(> a[href=\"/support\"]),aside li:has(> a[href=\"/book\"]),aside li:has(> a[href=\"/academy\"]),aside li:has(> a[href=\"/products\"]),aside a[href=\"/\"],aside a[href=\"/alerts\"],aside a[href=\"/portal\"],aside a[href=\"/support\"],aside a[href=\"/book\"],aside a[href=\"/academy\"],aside a[href=\"/products\"]{display:none!important}</style>";
 
 #[cfg(test)]
 mod tests {
