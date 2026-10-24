@@ -19,8 +19,14 @@ export const TARGETS = Object.freeze({
   '44ald-muhquop.js': {
     496136: ['useAuth', 'useClerk', 'useUser', 'useSession', 'useSignIn', 'useSignUp', 'useOrganization', 'useOrganizationList'],
     927534: ['SignedIn', 'SignedOut', 'ClerkLoaded', 'ClerkLoading'],
+    // The root provider the app actually renders; without this the Clerk instance is
+    // still created and the SDK is loaded from the vendor CDN.
+    441895: ['ClientClerkProvider'],
   },
 });
+
+// Public export name -> adapter API name, for bindings the adapter exposes differently.
+const API_NAME = Object.freeze({ ClientClerkProvider: 'ClerkProvider' });
 export function sha256(text) { return createHash('sha256').update(text).digest('hex'); }
 export function walk(node, fn) {
   if (!node || typeof node !== 'object') return;
@@ -60,7 +66,7 @@ export function patchAsset(source, filename) {
     const matches = entries.filter(entry => entry.moduleId === Number(moduleId) && entry.name === name);
     if (matches.length !== 1) throw new Error(`Expected exactly one ${filename}:${moduleId}:${name}; got ${matches.length}`);
     const match = matches[0];
-    const binding = `window.__SKYLIT_GATEWAY_AUTH.bindReact(e.i(271645)).${name}`;
+    const binding = `window.__SKYLIT_GATEWAY_AUTH.bindReact(e.i(271645)).${API_NAME[name] ?? name}`;
     edits.push({ ...match, original: source.slice(match.start, match.end), replacement: match.kind === 'getter' ? `()=>${binding}` : binding });
   }
   edits.sort((a, b) => a.start - b.start);

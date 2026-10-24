@@ -98,10 +98,15 @@
       "path": "/_next/static/chunks/44ald-muhquop.js",
       "filename": "44ald-muhquop.js",
       "originalSha256": "39ebc29c7558d4f2caf8ebaa02c08322e61a3b956986521795486141d922f75b",
-      "patchedSha256": "86ad556d27c3828607f0569eb88c4868a6af9b5945be671f8d17e48acc767c59",
+      "patchedSha256": "774604cad8063f638b0f360d980efb4471f4f9264b769bb6d220b20fdc4c8fa7",
       "originalSRI": "sha384-srZkQoqNWK+85J0EfMs1tWz6lwgTEv9ScUNHdTwChv7OQzYNwNVNB07kKoISRuz/",
-      "patchedSRI": "sha384-tCwEP4QLXWrriqSQHdryJC26ljJQN5b0bkeKKFlz8feiVBLSWzvLQ6b21pCyl+26",
+      "patchedSRI": "sha384-PcmiBw2a/j49yzCk9WoHxaFnFcEkibslHpNUqg5h2TOiQs8D2NF3UyPvT4FFzifh",
       "bindings": [
+        {
+          "moduleId": 441895,
+          "name": "ClientClerkProvider",
+          "kind": "direct"
+        },
         {
           "moduleId": 927534,
           "name": "ClerkLoaded",

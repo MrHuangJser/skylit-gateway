@@ -287,7 +287,12 @@ test('both Turbopack export encodings retain layout and getter shape; unexpected
     const source = Object.entries(modules).map(([id, names]) => `e.s([${names.map((name, i) => `${JSON.stringify(name)},${i % 2 ? '()=>original' : '0,original'}`).join(',')},"untouched",()=>unchanged],${id});`).join('\n');
     const { output, edits } = patchAsset(source, filename);
     assert.equal(edits.length, Object.values(modules).flat().length); parseJS(output);
-    for (const edit of edits) assert.equal(edit.replacement, `${edit.kind === 'getter' ? '()=>': ''}window.__SKYLIT_GATEWAY_AUTH.bindReact(e.i(271645)).${edit.name}`);
+    // The replacement uses the adapter API name, which may differ from the export name
+    // for provider aliases (e.g. ClientClerkProvider -> ClerkProvider).
+    for (const edit of edits) {
+      const api = { ClientClerkProvider: 'ClerkProvider' }[edit.name] ?? edit.name;
+      assert.equal(edit.replacement, `${edit.kind === 'getter' ? '()=>': ''}window.__SKYLIT_GATEWAY_AUTH.bindReact(e.i(271645)).${api}`);
+    }
     assert.equal(exportsIn(output).filter(entry => entry.name === 'untouched').every(entry => output.slice(entry.start, entry.end) === '()=>unchanged'), true);
     const [id, names] = Object.entries(modules)[0];
     assert.throws(() => patchAsset(`${source}\ne.s([${JSON.stringify(names[0])},0,x],${id});`, filename), /exactly one/);
@@ -349,5 +354,9 @@ test('generated public patches match manifest SHA256 and only exact 16 bindings 
   // by more than one layer, so the edit count is checked against the manifest instead.
   const expected = manifest.assets.reduce((sum, asset) => sum + asset.bindings.length, 0);
   assert.equal(total, expected);
-  assert.equal(covered.size, 16, 'all 16 Clerk bindings must be replaced');
+  // All 16 Clerk bindings must be replaced; provider aliases may add extra entries.
+  const needed = ['ClerkProvider', 'SignedIn', 'SignedOut', 'ClerkLoaded', 'ClerkLoading', 'useAuth', 'useUser',
+    'useSession', 'useClerk', 'useSignIn', 'useSignUp', 'UserButton', 'SignInButton', 'SignOutButton',
+    'useOrganization', 'useOrganizationList'];
+  assert.deepEqual(needed.filter(n => !covered.has(n)), [], 'every Clerk binding must be replaced');
 });
