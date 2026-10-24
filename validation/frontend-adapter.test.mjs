@@ -324,6 +324,7 @@ test('generated public patches match manifest SHA256 and only exact 16 bindings 
   const rust = await readFile(new URL('../frontend/generated.rs', import.meta.url), 'utf8');
   assert.equal(manifest.fullWebsiteReady, false); assert.equal(manifest.assets.length, 2);
   let total = 0;
+  const covered = new Set();
   for (const asset of manifest.assets) {
     const original = await readFile(new URL(asset.filename, ARCHIVE), 'utf8');
     const patched = await readFile(new URL(`../frontend/patches/${asset.filename}`, import.meta.url), 'utf8');
@@ -342,6 +343,11 @@ test('generated public patches match manifest SHA256 and only exact 16 bindings 
     restored += patched.slice(newPos); assert.equal(restored, original);
     assert.equal(exportsIn(original).length, exportsIn(patched).length); parseJS(patched);
     total += result.edits.length;
+    result.edits.forEach(edit => covered.add(edit.name));
   }
-  assert.equal(total, 16);
+  // Every auth binding the adapter owns must be replaced; the same name may be re-exported
+  // by more than one layer, so the edit count is checked against the manifest instead.
+  const expected = manifest.assets.reduce((sum, asset) => sum + asset.bindings.length, 0);
+  assert.equal(total, expected);
+  assert.equal(covered.size, 16, 'all 16 Clerk bindings must be replaced');
 });

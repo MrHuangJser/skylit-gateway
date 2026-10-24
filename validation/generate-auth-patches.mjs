@@ -5,15 +5,20 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 export const TARGETS = Object.freeze({
-  // Current build (chunk names change on every upstream deploy; module ids are stable).
+  // Current build. Chunk names and module ids are re-discovered with
+  // validation/map-live-seam-ast.mjs after every upstream deploy. Both layers below
+  // re-export the Clerk surface, so both are replaced: depending on the import site the
+  // app may resolve the auth hooks through either one.
   '3ehfb7p2agn0l.js': {
     965389: ['useAuth', 'useSignIn', 'useSignUp'],
     265829: ['SignedIn', 'SignedOut', 'ClerkLoaded', 'ClerkLoading'],
     733917: ['UserButton'],
     192448: ['ClerkProvider', 'SignInButton', 'SignOutButton'],
+    827085: ['useClerk', 'useUser', 'useSession', 'useOrganization', 'useOrganizationList'],
   },
   '44ald-muhquop.js': {
-    496136: ['useClerk', 'useUser', 'useSession', 'useOrganization', 'useOrganizationList'],
+    496136: ['useAuth', 'useClerk', 'useUser', 'useSession', 'useSignIn', 'useSignUp', 'useOrganization', 'useOrganizationList'],
+    927534: ['SignedIn', 'SignedOut', 'ClerkLoaded', 'ClerkLoading'],
   },
 });
 export function sha256(text) { return createHash('sha256').update(text).digest('hex'); }

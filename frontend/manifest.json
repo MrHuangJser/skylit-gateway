@@ -8,9 +8,9 @@
       "path": "/_next/static/chunks/3ehfb7p2agn0l.js",
       "filename": "3ehfb7p2agn0l.js",
       "originalSha256": "5596eaffc6caf1acfcc47d8a7d224bc5804015d7374f8c58e5e0aa403fd09da4",
-      "patchedSha256": "5afdc502a4cda69ca11fa425ab75641d8cd35008ee80241ca3a0728a1f286589",
+      "patchedSha256": "07f77c0b1ea561d03d532b38c61d547f819af6126e41b177daf4ee0675dfdb2a",
       "originalSRI": "sha384-v3cnCCsuHnGiDbr5A1hDUu54J75v6BpWzPisEI2L4vApTiIm+4HMdlQE1Oxv9HOm",
-      "patchedSRI": "sha384-nUmrI5cCiG7ilv5bXzyl6BMhXSTzQ0y+FH51Ir2Ngqupp6jHB836H1tCJWW5WBso",
+      "patchedSRI": "sha384-nMjm5U8Hono+jVCrzuqP5emZoH4qRFSvE7FPxvY3EtG0BW47+QqSnPyiPahJWM3V",
       "bindings": [
         {
           "moduleId": 965389,
@@ -66,6 +66,31 @@
           "moduleId": 192448,
           "name": "SignOutButton",
           "kind": "direct"
+        },
+        {
+          "moduleId": 827085,
+          "name": "useClerk",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 827085,
+          "name": "useOrganization",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 827085,
+          "name": "useOrganizationList",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 827085,
+          "name": "useSession",
+          "kind": "direct"
+        },
+        {
+          "moduleId": 827085,
+          "name": "useUser",
+          "kind": "direct"
         }
       ]
     },
@@ -73,10 +98,35 @@
       "path": "/_next/static/chunks/44ald-muhquop.js",
       "filename": "44ald-muhquop.js",
       "originalSha256": "39ebc29c7558d4f2caf8ebaa02c08322e61a3b956986521795486141d922f75b",
-      "patchedSha256": "c0c67f57385fa6700976a60ae17f99e10db4c5272be46de1ae22ae4403589e94",
+      "patchedSha256": "86ad556d27c3828607f0569eb88c4868a6af9b5945be671f8d17e48acc767c59",
       "originalSRI": "sha384-srZkQoqNWK+85J0EfMs1tWz6lwgTEv9ScUNHdTwChv7OQzYNwNVNB07kKoISRuz/",
-      "patchedSRI": "sha384-MQl/tgIfQ6hoALMVjaLNXTY5SjVKdg9Yt8bXLM4QsqzaLjTmK9wYbwx9TQPnAmT1",
+      "patchedSRI": "sha384-tCwEP4QLXWrriqSQHdryJC26ljJQN5b0bkeKKFlz8feiVBLSWzvLQ6b21pCyl+26",
       "bindings": [
+        {
+          "moduleId": 927534,
+          "name": "ClerkLoaded",
+          "kind": "getter"
+        },
+        {
+          "moduleId": 927534,
+          "name": "ClerkLoading",
+          "kind": "getter"
+        },
+        {
+          "moduleId": 927534,
+          "name": "SignedIn",
+          "kind": "getter"
+        },
+        {
+          "moduleId": 927534,
+          "name": "SignedOut",
+          "kind": "getter"
+        },
+        {
+          "moduleId": 496136,
+          "name": "useAuth",
+          "kind": "getter"
+        },
         {
           "moduleId": 496136,
           "name": "useClerk",
@@ -95,6 +145,16 @@
         {
           "moduleId": 496136,
           "name": "useSession",
+          "kind": "getter"
+        },
+        {
+          "moduleId": 496136,
+          "name": "useSignIn",
+          "kind": "getter"
+        },
+        {
+          "moduleId": 496136,
+          "name": "useSignUp",
           "kind": "getter"
         },
         {
