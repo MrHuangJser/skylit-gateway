@@ -91,10 +91,13 @@ impl Mirror {
     pub(crate) fn len(&self) -> usize { self.entries }
     pub(crate) fn captured_at(&self) -> Option<&str> { self.captured_at.as_deref() }
 
+    /// The captured root document, used when a deep link has no snapshot of its own: the
+    /// client router takes over from the shell.
+    pub(crate) fn shell(&self) -> Option<Mirrored> { self.resolve("/") }
+
     /// Resolves a request path. Only static assets and captured documents qualify, so a
     /// stray API or data path can never be answered from the snapshot.
-    pub(crate) fn resolve(&self, path: &str) -> Option<Mirrored> {
-        if path.contains("..") { return None; }
+    pub(crate) fn resolve(&self, path: &str) -> Option<Mirrored> {        if path.contains("..") { return None; }
         let (relative, content_type, document) = self.files.get(path)?;
         // Documents are exact route matches; assets must live under a static prefix.
         let static_asset = path.starts_with("/_next/static/") || path.starts_with("/static/");

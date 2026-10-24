@@ -455,8 +455,30 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
         if let Some(mirrored) = gateway.mirror.resolve(path) {
             return mirrored_response(request.method(), path, mirrored).await;
         }
+        // The app is a single-page client: upstream answers its deep links (/atlas, /talon,
+        // ...) with a 404 document. Serve the captured shell instead so the client router
+        // takes over, which is exactly what clicking a sidebar link does.
+        if page_like(path) {
+            if let Some(shell) = gateway.mirror.shell() {
+                return mirrored_response(request.method(), "/", shell).await;
+            }
+        }
     }
     proxy(&gateway, request).await
+}
+
+/// A browser page path, as opposed to an asset or a data endpoint.
+fn page_like(path: &str) -> bool {
+    if path.starts_with("/_next/") || path.starts_with("/_gateway") { return false; }
+    // Any path with a file extension is an asset request, not a client route.
+    let last = path.rsplit('/').next().unwrap_or("");
+    if last.contains('.') { return false; }
+    // Data/API surfaces must never receive an HTML shell.
+    const DATA_PREFIXES: [&str; 8] = [
+        "/api/", "/tv/", "/siren/", "/agent-gateway/", "/fs/", "/flow/", "/nexus/", "/fs",
+    ];
+    let with_slash = format!("{path}/");
+    !DATA_PREFIXES.iter().any(|prefix| path.starts_with(prefix) || with_slash.starts_with(prefix))
 }
 
 /// Serves one snapshot file. Documents go through the same rewrite the live path uses, so

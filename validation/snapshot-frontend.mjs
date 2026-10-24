@@ -15,7 +15,13 @@ import assert from 'node:assert/strict';
 
 const ORIGIN = process.env.SNAPSHOT_ORIGIN || 'https://app.skylit.ai';
 const ROOT = fileURLToPath(new URL('../frontend/mirror/', import.meta.url));
-const ROUTES = (process.env.SNAPSHOT_ROUTES || '/').split(',').map(r => r.trim()).filter(Boolean);
+// Every page the owner navigates to. Routes that upstream answers with a non-200 are
+// skipped with a warning (some pages only render for a signed-in browser).
+const ROUTES = (process.env.SNAPSHOT_ROUTES || [
+  '/', '/atlas', '/alerts', '/dashboard', '/calendar', '/stages', '/portal', '/products',
+  '/support', '/talon', '/tempest', '/trinity', '/academy', '/heatseeker/alerts',
+  '/heatseeker/heatmaps', '/live-stages',
+].join(',')).split(',').map(r => r.trim()).filter(Boolean);
 const MAX_TOTAL = Number(process.env.SNAPSHOT_MAX_BYTES || 64 * 1024 * 1024);
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 
