@@ -385,6 +385,22 @@ async fn dispatch(State(gateway): State<Arc<Gateway>>, request: Request) -> Resp
 
 async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str, admission: Admission) -> Response {
     let gateway = gateway.clone();
+    // The root is not a page of its own in this build: the app's default view lives at a
+    // client-side route. Redirect there so "/" always lands on the same view instead of
+    // re-rendering whatever the client router last showed. Query strings are preserved so
+    // per-symbol links (/ ?symbol=SPXW) keep working.
+    if path == "/" && gateway.config.enable_frontend_auth_rewrite
+        && matches!(*request.method(), Method::GET | Method::HEAD)
+    {
+        let target = match request.uri().query() {
+            Some(query) if !query.is_empty() => format!("{HOME_ROUTE}?{query}"),
+            _ => HOME_ROUTE.to_owned(),
+        };
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::FOUND;
+        if let Ok(value) = HeaderValue::from_str(&target) { response.headers_mut().insert(header::LOCATION, value); }
+        return local(response);
+    }
     if path == "/_gateway/auth/bootstrap" {
         if !gateway.config.enable_browser_auth_adapter {
             return text(StatusCode::NOT_FOUND, "Not found");
@@ -579,6 +595,10 @@ async fn mirrored_response(gateway: &Gateway, method: &Method, path: &str, mirro
 fn immutable_static_asset_for(content_type: &str) -> bool {
     !content_type.starts_with("text/html")
 }
+
+/// Where "/" sends the browser. The app renders this view client-side; upstream answers
+/// it with 404, which is why the gateway serves the captured shell for it.
+const HOME_ROUTE: &str = "/heatmaps";
 
 const MAX_ACCESS_BODY: usize = 64 * 1024;
 

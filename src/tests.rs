@@ -776,7 +776,7 @@ async fn frontend_rewrite_only_adds_exact_read_paths_for_snapshot_bearer() {
     config.enable_frontend_auth_rewrite = true;
     let f = fixture_with_config(config).await;
     for method in [Method::GET, Method::HEAD] {
-        for path in ["/", "/atlas?fixture=1", "/api/nexus/legal/terms-status", "/api/symbols", "/api/nexus/support/tickets", "/agent-gateway/agenthub/tempest/access"] {
+        for path in ["/heatmaps", "/atlas?fixture=1", "/api/nexus/legal/terms-status", "/api/symbols", "/api/nexus/support/tickets", "/agent-gateway/agenthub/tempest/access"] {
             assert_eq!(f.app.clone().oneshot(authorized_request(method.clone(), path)).await.unwrap().status(), StatusCode::OK);
         }
         // Presets are per-device state now. A bare access-code Bearer has no device
@@ -809,7 +809,7 @@ async fn frontend_rewrite_only_adds_exact_read_paths_for_snapshot_bearer() {
     }
     // Enabling frontend rewriting still fails closed if its normal snapshot disappears.
     std::fs::remove_file(&file.path).unwrap();
-    for path in ["/", "/atlas", "/api/nexus/legal/terms-status"] {
+    for path in [HOME_ROUTE, "/atlas", "/api/nexus/legal/terms-status"] {
         assert_eq!(f.app.clone().oneshot(authorized_request(Method::GET, path)).await.unwrap().status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }
@@ -1021,6 +1021,8 @@ async fn observed_homepage_read_routes_get_only_trusted_bearer_without_widening_
     let file = SessionFile::new(Some(&snapshot(UPSTREAM_TEST_TOKEN, now, now + 180)));
     let f = fixture_with_config(edge_config(&file)).await;
     for &path in FRONTEND_READ_PATHS {
+        // "/" is a redirect to the app's default view; every other observed read is a page.
+        let path = if path == "/" { HOME_ROUTE } else { path };
         let response = f.app.clone().oneshot(authorized_request(Method::GET, path)).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let request = f.mock.requests.lock().unwrap().last().unwrap().clone();
@@ -1435,8 +1437,14 @@ async fn snapshot_serves_the_shell_and_assets_without_asking_upstream() {
     config.frontend_mirror_dir = root.clone();
     let f = fixture_with_config(config).await;
 
+    // "/" always lands on the app's default view, keeping any query string.
+    let redirect = f.app.clone().oneshot(authorized_request(Method::GET, "/?symbol=SPXW")).await.unwrap();
+    assert_eq!(redirect.status(), StatusCode::FOUND);
+    assert_eq!(redirect.headers()[header::LOCATION], format!("{HOME_ROUTE}?symbol=SPXW"));
+    assert_eq!(f.mock.requests.lock().unwrap().len(), 0, "a redirect must not reach upstream");
+
     // The shell comes from the snapshot, still rewritten for the adapter.
-    let page = f.app.clone().oneshot(authorized_request(Method::GET, "/")).await.unwrap();
+    let page = f.app.clone().oneshot(authorized_request(Method::GET, HOME_ROUTE)).await.unwrap();
     assert_eq!(page.status(), StatusCode::OK);
     assert_eq!(page.headers()["x-skylit-frontend-source"], "snapshot");
     let text = body(page).await;
