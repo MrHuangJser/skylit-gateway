@@ -95,12 +95,12 @@
       ]
     },
     {
-      "path": "/_next/static/chunks/0b2tuuaj-qxes.js",
-      "filename": "0b2tuuaj-qxes.js",
-      "originalSha256": "de34bc33f9d0e09982954ade60d33a82be699977724cc5f143c9ee1cb3fc96d4",
-      "patchedSha256": "1a4e3cd81b6aaab30b2a3bae3f9dc07a5c4259a219ae541fa9e57338348d72dd",
-      "originalSRI": "sha384-/XDB4zMG/ZgocKcPWlUSF9RanhxY4btPcgOkFwPS4pU05H9JZVH46Dm3cIXtg27k",
-      "patchedSRI": "sha384-Hd+XHo4qxUxJGWnexYILfT5YM0PqeuxFMZJSdYKZIciPnBW2xgpK0jWUD0KQmUMS",
+      "path": "/_next/static/chunks/3jrsd-jyz0vvi.js",
+      "filename": "3jrsd-jyz0vvi.js",
+      "originalSha256": "708fea68028c12cd2183ce06c43c1f920d40d2467dd36972988c8d0fc33f3f04",
+      "patchedSha256": "4e49272a50234b168012f105f6c1244b72bf535ab3e385d423df03afaf1c5a4e",
+      "originalSRI": "sha384-jibAqC4CjgZMkvuhh36adaM8l1o7KAAHXNt75MjO+DURxLEah9f7PSeygx2Agebl",
+      "patchedSRI": "sha384-n7CPpQla14aISY7Up/ycCysQOqTHxVKJ9axDbj/NUsCrVi0XyiR7Za1e7+WTQDZb",
       "bindings": [
         {
           "moduleId": 441895,

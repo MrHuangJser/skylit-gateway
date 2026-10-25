@@ -26,9 +26,16 @@ const ROUTES = (process.env.SNAPSHOT_ROUTES || [
 const MAX_TOTAL = Number(process.env.SNAPSHOT_MAX_BYTES || 64 * 1024 * 1024);
 // Routes with a dynamic segment. The document for one id is captured and served for every
 // id: the code is identical, and the page loads its own data by id after hydration.
-const TEMPLATES = (process.env.SNAPSHOT_TEMPLATES || '/stages/__ID__,/stages/__ID__/replay')
-  .split(',').map(t => t.trim()).filter(Boolean);
-const TEMPLATE_ID = process.env.SNAPSHOT_TEMPLATE_ID || '';
+// Each entry is "pattern@sampleId"; the id may be omitted and SNAPSHOT_TEMPLATE_ID used.
+const TEMPLATES = (process.env.SNAPSHOT_TEMPLATES || [
+  '/stages/__ID__@477ecfb2-e85a-4486-8e04-e54019b5c37e',
+  '/stages/__ID__/replay@477ecfb2-e85a-4486-8e04-e54019b5c37e',
+  '/academy/__ID__@5b8aa8cf-52a2-4506-af0a-db0eb594d5b6',
+].join(',')).split(',').map(t => t.trim()).filter(Boolean)
+  .map(entry => {
+    const [pattern, id] = entry.split('@');
+    return { pattern: pattern.trim(), id: (id || process.env.SNAPSHOT_TEMPLATE_ID || '').trim() };
+  });
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 
 await rm(ROOT, { recursive: true, force: true });
@@ -112,9 +119,9 @@ for (const route of ROUTES) {
 
 // 1b. Capture one instance of each dynamic route as a template.
 const templates = [];
-for (const pattern of TEMPLATES) {
-  if (!TEMPLATE_ID) { console.warn(`skip template ${pattern}: SNAPSHOT_TEMPLATE_ID not set`); continue; }
-  const real = pattern.replace('__ID__', TEMPLATE_ID);
+for (const { pattern, id: sampleId } of TEMPLATES) {
+  if (!sampleId) { console.warn(`skip template ${pattern}: no sample id`); continue; }
+  const real = pattern.replace('__ID__', sampleId);
   let fetched;
   try { fetched = await fetchOne(real); }
   catch (error) { console.warn(`skip template ${pattern}: ${String(error.message).slice(0, 60)}`); continue; }
@@ -124,7 +131,7 @@ for (const pattern of TEMPLATES) {
   await writeFile(file, buf);
   for (const ref of collectRefs(buf.toString('utf8'))) enqueue(ref);
   total += buf.length;
-  templates.push({ pattern, source: real, capturedId: TEMPLATE_ID, file: file.slice(ROOT.length).split(String.fromCharCode(92)).join('/'),
+  templates.push({ pattern, source: real, capturedId: sampleId, file: file.slice(ROOT.length).split(String.fromCharCode(92)).join('/'),
     sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length });
   console.log(`template ${pattern} <- ${real} (${buf.length} bytes)`);
 }

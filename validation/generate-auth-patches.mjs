@@ -16,7 +16,7 @@ export const TARGETS = Object.freeze({
     192448: ['ClerkProvider', 'SignInButton', 'SignOutButton'],
     827085: ['useClerk', 'useUser', 'useSession', 'useOrganization', 'useOrganizationList'],
   },
-  '0b2tuuaj-qxes.js': {
+  '3jrsd-jyz0vvi.js': {
     496136: ['useAuth', 'useClerk', 'useUser', 'useSession', 'useSignIn', 'useSignUp', 'useOrganization', 'useOrganizationList'],
     927534: ['SignedIn', 'SignedOut', 'ClerkLoaded', 'ClerkLoading'],
     // The root provider the app actually renders; without this the Clerk instance is
