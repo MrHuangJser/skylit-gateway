@@ -143,6 +143,10 @@ struct Gateway {
     brand: brand::Brand,
     /// Branded variants of snapshot text assets, computed once per file.
     branded: Mutex<HashMap<String, std::sync::Arc<Vec<u8>>>>,
+    /// Process start, for the status report.
+    started: Instant,
+    /// Last comparison of the live upstream build against the pinned one.
+    upstream_check: Mutex<Option<UpstreamCheck>>,
     /// (token hash, owner, verified at): the last positive upstream identity check.
     owner_check: Mutex<Option<(SecretHash, String, Instant)>>,
 }
@@ -178,7 +182,8 @@ impl Gateway {
             eprintln!("brand: serving as \"{}\" (rename + skin applied at serve time)", brand.name());
         }
         Ok(Self { config, upstream, client, sessions: Mutex::new(HashMap::new()), edge_lease: Mutex::new(None), devices, mirror,
-            brand, branded: Mutex::new(HashMap::new()), owner_check: Mutex::new(None) })
+            brand, branded: Mutex::new(HashMap::new()), started: Instant::now(),
+            upstream_check: Mutex::new(None), owner_check: Mutex::new(None) })
     }
 
     fn owner_verified_recently(&self, token: &SecretHash, owner: &str) -> bool {
@@ -303,11 +308,73 @@ fn hash(bytes: &[u8]) -> SecretHash { Sha256::digest(bytes).into() }
 fn constant_eq(left: &SecretHash, right: &SecretHash) -> bool { bool::from(left.ct_eq(right)) }
 
 pub fn router(config: Config) -> Result<Router, reqwest::Error> {
-    Ok(router_with_state(Arc::new(Gateway::new(config)?)))
+    let gateway = Arc::new(Gateway::new(config)?);
+    // Only the real entry point starts the sentinel: it makes an upstream request, which
+    // must never happen inside unit tests.
+    spawn_upstream_sentinel(&gateway);
+    Ok(router_with_state(gateway))
 }
 
 fn router_with_state(gateway: Arc<Gateway>) -> Router {
     Router::new().fallback(dispatch).with_state(gateway)
+}
+
+#[derive(Clone)]
+struct UpstreamCheck {
+    checked_at: Instant,
+    matches_pinned: bool,
+    live_chunks: Vec<String>,
+}
+
+/// Watches for an upstream rebuild. It never changes what is served: the snapshot is what
+/// answers requests. It only records (and logs) that a refresh is due, so the failure is
+/// noticed here instead of by a user hitting a page that no longer matches.
+fn spawn_upstream_sentinel(gateway: &Arc<Gateway>) {
+    let Some(mirror_has_pinned) = Some(!gateway.mirror.is_empty()) else { return };
+    if !mirror_has_pinned { return; }
+    let gateway = gateway.clone();
+    tokio::spawn(async move {
+        loop {
+            let live = fetch_live_chunks(&gateway).await;
+            if let Some(chunks) = live {
+                let matches = frontend::pinned_names().iter().all(|name| chunks.iter().any(|c| c.ends_with(name)));
+                let changed = match gateway.upstream_check.lock() {
+                    Ok(mut slot) => {
+                        let changed = slot.as_ref().is_none_or(|previous: &UpstreamCheck| previous.matches_pinned != matches);
+                        *slot = Some(UpstreamCheck { checked_at: Instant::now(), matches_pinned: matches, live_chunks: chunks });
+                        changed
+                    }
+                    Err(_) => false,
+                };
+                if changed {
+                    if matches {
+                        eprintln!("upstream build: still matches the pinned chunks");
+                    } else {
+                        eprintln!("upstream build: CHANGED (pinned chunks are gone); the snapshot keeps serving, refresh it when convenient");
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        }
+    });
+}
+
+/// Reads the live home document and collects the chunk file names it loads.
+async fn fetch_live_chunks(gateway: &Gateway) -> Option<Vec<String>> {
+    let response = tokio::time::timeout(Duration::from_secs(20), gateway.client.get(gateway.upstream.clone()).send())
+        .await.ok()?.ok()?;
+    if !response.status().is_success() { return None; }
+    let body = tokio::time::timeout(Duration::from_secs(20), response.text()).await.ok()?.ok()?;
+    let mut names = Vec::new();
+    let mut rest = body.as_str();
+    while let Some(at) = rest.find("/_next/static/chunks/") {
+        rest = &rest[at + "/_next/static/chunks/".len()..];
+        let end = rest.find(['"', '\'', ' ', '?']).unwrap_or(rest.len());
+        let name = &rest[..end];
+        if !name.is_empty() && !names.iter().any(|existing| existing == name) { names.push(name.to_owned()); }
+        rest = &rest[end..];
+    }
+    (!names.is_empty()).then_some(names)
 }
 
 #[derive(Serialize)]
@@ -434,6 +501,12 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
     {
         return frontend::retiring_service_worker();
     }
+    // Operational status: what is being served, how old it is, and whether the upstream
+    // build has moved on. Contains no token, cookie or identity.
+    if path == "/_gateway/status" {
+        if request.method() != Method::GET { return text(StatusCode::METHOD_NOT_ALLOWED, "GET only"); }
+        return local(Json(status_report(&gateway)).into_response());
+    }
     if path == "/manifest.webmanifest" && gateway.brand.enabled() {
         let mut response = Response::new(Body::from(gateway.brand.manifest()));
         response.headers_mut().insert(header::CONTENT_TYPE,
@@ -509,6 +582,90 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
         }
     }
     proxy(&gateway, request).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StatusReport {
+    status: &'static str,
+    uptime_seconds: u64,
+    brand: BrandStatus,
+    snapshot: SnapshotStatus,
+    session: SessionStatus,
+    upstream: UpstreamStatus,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrandStatus { enabled: bool, name: String }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SnapshotStatus {
+    /// Null when no snapshot is installed (everything proxies live).
+    captured_at: Option<String>,
+    files: usize,
+    pinned_chunks: Vec<&'static str>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionStatus {
+    /// Seconds left on the token the sidecar exported; null when it cannot be read.
+    token_seconds_left: Option<i64>,
+    /// What the sidecar last reported about itself, when it shares the session directory.
+    sidecar_state: Option<String>,
+    sidecar_checked_at: Option<String>,
+    sign_ins: Option<u64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpstreamStatus {
+    checked_seconds_ago: Option<u64>,
+    /// True while the live build still contains the chunks this snapshot is pinned to.
+    matches_pinned: Option<bool>,
+    live_chunks: Option<usize>,
+}
+
+/// Seconds since the unix epoch, or 0 when the clock is before it (never in practice).
+fn unix_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+fn status_report(gateway: &Gateway) -> StatusReport {
+    let session = gateway.config.session_file.as_ref().and_then(|file| std::fs::read(file).ok());
+    let sidecar = gateway.config.session_file.as_ref()
+        .and_then(|file| file.parent().map(|dir| dir.join("sidecar-status.json")))
+        .and_then(|file| std::fs::read(file).ok())
+        .and_then(|raw| serde_json::from_slice::<serde_json::Value>(&raw).ok());
+    let token_seconds_left = session
+        .as_deref()
+        .and_then(|raw| serde_json::from_slice::<serde_json::Value>(raw).ok())
+        .and_then(|value| value.get("expiresAt").and_then(|at| at.as_i64()))
+        .map(|expires| expires - unix_now());
+    let (checked_seconds_ago, matches_pinned, live_chunks) = match gateway.upstream_check.lock() {
+        Ok(slot) => slot.as_ref().map_or((None, None, None), |check| (
+            Some(check.checked_at.elapsed().as_secs()), Some(check.matches_pinned), Some(check.live_chunks.len()))),
+        Err(_) => (None, None, None),
+    };
+    StatusReport {
+        status: "ok",
+        uptime_seconds: gateway.started.elapsed().as_secs(),
+        brand: BrandStatus { enabled: gateway.brand.enabled(), name: gateway.brand.name().to_owned() },
+        snapshot: SnapshotStatus {
+            captured_at: gateway.mirror.captured_at().map(str::to_owned),
+            files: gateway.mirror.len(),
+            pinned_chunks: frontend::pinned_names().to_vec(),
+        },
+        session: SessionStatus {
+            token_seconds_left,
+            sidecar_state: sidecar.as_ref().and_then(|v| v.get("state")).and_then(|v| v.as_str()).map(str::to_owned),
+            sidecar_checked_at: sidecar.as_ref().and_then(|v| v.get("checkedAt")).and_then(|v| v.as_str()).map(str::to_owned),
+            sign_ins: sidecar.as_ref().and_then(|v| v.get("signIns")).and_then(serde_json::Value::as_u64),
+        },
+        upstream: UpstreamStatus { checked_seconds_ago, matches_pinned, live_chunks },
+    }
 }
 
 fn unknown_page(gateway: &Gateway, path: &str) -> Response {

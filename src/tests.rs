@@ -1639,6 +1639,32 @@ async fn unknown_pages_do_not_silently_render_the_home_view() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[tokio::test]
+async fn status_reports_the_snapshot_and_never_leaks_the_token() {
+    let dir = std::env::temp_dir().join(format!("skylit-status-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let root = write_mirror(&dir);
+    let now = epoch_now();
+    let file = SessionFile::new(Some(&snapshot(UPSTREAM_TEST_TOKEN, now, now + 180)));
+    let mut config = edge_config(&file);
+    config.frontend_mirror_dir = root.clone();
+    let f = fixture_with_config(config).await;
+    let response = f.app.clone().oneshot(authorized_request(Method::GET, "/_gateway/status")).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = body(response).await;
+    let value: serde_json::Value = serde_json::from_str(&text).expect("status is json");
+    assert_eq!(value["status"], "ok");
+    assert_eq!(value["snapshot"]["files"], 2, "the fixture snapshot has two entries");
+    assert!(value["snapshot"]["capturedAt"].is_string());
+    assert!(value["session"]["tokenSecondsLeft"].as_i64().unwrap_or(0) > 0);
+    assert_eq!(value["brand"]["enabled"], true);
+    // Operational only: no credential, cookie or identity may appear here.
+    assert!(!text.contains(UPSTREAM_TEST_TOKEN), "status must not expose the token");
+    assert!(!text.contains("eyJ"), "no JWT fragments");
+    assert!(!text.contains("xiaoxin"), "no account identity");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn public_origin_is_a_single_origin_not_a_destination_url() {    assert_eq!(parse_origin("https://gateway.example.test/").unwrap(), ORIGIN);
     for bad in ["null", "file:///tmp", "https://user:password@gateway.example.test", "https://gateway.example.test/path", "https://gateway.example.test/?query", "https://gateway.example.test/#fragment"] {

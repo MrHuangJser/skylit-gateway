@@ -99,6 +99,9 @@ pub(crate) fn is_pinned_script(path: &str) -> bool {
     generated::PATCHES.iter().any(|patch| patch.0 == path)
 }
 
+/// The upstream file names this build was pinned to, for the status report.
+pub(crate) fn pinned_names() -> &'static [&'static str] { generated::CRITICAL_BASENAMES }
+
 /// The embedded patched bytes and the upstream hash they were generated from.
 pub(crate) fn patch_for(path: &str) -> Option<(&'static str, &'static [u8])> {
     generated::PATCHES.iter().find(|patch| patch.0 == path).map(|patch| (patch.1, patch.2))
