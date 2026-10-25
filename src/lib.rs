@@ -414,7 +414,7 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
     // The replacement brand mark used wherever the original logo was referenced. Every
     // variant the app asks for (256px, 64px, dark/light) resolves to the same new mark.
     if path == brand::BRAND_LOGO_PATH || path.starts_with("/_gateway/brand/") {
-        let mut response = Response::new(Body::from(gateway.brand.logo_svg()));
+        let mut response = Response::new(Body::from(gateway.brand.logo_svg(path)));
         response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("image/svg+xml"));
         return cacheable(local(response));
     }

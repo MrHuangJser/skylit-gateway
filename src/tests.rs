@@ -1573,8 +1573,15 @@ fn brand_renames_display_text_but_never_breaks_identifiers_or_links() {
         assert_eq!(brand.rewrite(keep).as_deref(), None, "must stay untouched: {keep}");
     }
     // The vendor mark is redirected to the new one.
+    // Every brand artwork is redirected, so section icons stop showing the old identity.
     assert_eq!(brand.rewrite("/brand/skylit-satin-graphite-dark-256.png").as_deref(),
-        Some("/_gateway/brand/satin-graphite-dark-256.png"));
+        Some("/_gateway/brand/skylit-satin-graphite-dark-256.png"));
+    assert_eq!(brand.rewrite("/brand/orbit-violet-64.webp").as_deref(),
+        Some("/_gateway/brand/orbit-violet-64.webp"));
+    // Distinct families keep distinct badges.
+    assert_ne!(brand.logo_svg("/_gateway/brand/orbit-violet-64.webp"),
+        brand.logo_svg("/_gateway/brand/talon-satin-graphite-dark.png"));
+    assert!(brand.logo_svg("/_gateway/brand/mark.svg").contains(brand.name()));
 }
 
 #[test]

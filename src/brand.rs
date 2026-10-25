@@ -59,8 +59,8 @@ impl Brand {
             let _ = bytes;
         }
         out.push_str(&input[cursor..]);
-        if out.contains("/brand/skylit-") {
-            out = out.replace("/brand/skylit-", "/_gateway/brand/");
+        if out.contains("/brand/") {
+            out = out.replace("/brand/", "/_gateway/brand/");
             changed = true;
         }
         if changed { Some(out) } else { None }
@@ -117,22 +117,41 @@ body::before{{content:"";position:fixed;inset:0 0 auto 0;height:3px;z-index:2147
             accent = self.accent, soft = self.accent_soft)
     }
 
-    /// The replacement mark: a square badge carrying the new brand character.
-    pub(crate) fn logo_svg(&self) -> String {
-        let glyph = self.name.chars().next().map(|c| c.to_string()).unwrap_or_else(|| "娃".to_owned());
+    /// The replacement artwork. `requested` is the original file name, so each section keeps
+    /// a distinct badge instead of every icon becoming the same picture: the glyph comes
+    /// from the name and the hue is derived from it, while the brand mark itself uses the
+    /// configured name.
+    pub(crate) fn logo_svg(&self, requested: &str) -> String {
+        let stem = requested.rsplit('/').next().unwrap_or("mark.svg");
+        let family = stem.split(['-', '.']).next().unwrap_or("").to_ascii_lowercase();
+        let is_brand = family.is_empty() || family == "mark" || family == "skylit" || family == "logo";
+        let glyph = if is_brand {
+            self.name.chars().next().map(|c| c.to_string()).unwrap_or_else(|| "娃".to_owned())
+        } else {
+            family.chars().next().map(|c| c.to_ascii_uppercase().to_string()).unwrap_or_else(|| "•".to_owned())
+        };
+        // Deterministic hue so a section always gets the same colour, stable across restarts.
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for byte in family.as_bytes() { hash ^= u64::from(*byte); hash = hash.wrapping_mul(0x100_0000_01b3); }
+        let hue = (hash % 360) as u32;
+        let (fill_top, fill_bottom, ring) = if is_brand {
+            (self.accent.clone(), "#b3160f".to_owned(), self.accent_soft.clone())
+        } else {
+            (format!("hsl({hue} 62% 42%)"), format!("hsl({hue} 68% 28%)"), format!("hsl({hue} 70% 62%)"))
+        };
         format!(
 r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="{name}">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="{accent}"/><stop offset="1" stop-color="#b3160f"/>
+      <stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/>
     </linearGradient>
   </defs>
   <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#g)"/>
-  <rect x="8" y="8" width="240" height="240" rx="56" fill="none" stroke="{soft}" stroke-opacity=".55" stroke-width="4"/>
-  <text x="128" y="170" text-anchor="middle" font-size="140" font-weight="700"
-        font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" fill="#fff6f2">{glyph}</text>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="none" stroke="{ring}" stroke-opacity=".6" stroke-width="4"/>
+  <text x="128" y="172" text-anchor="middle" font-size="132" font-weight="700"
+        font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',system-ui,sans-serif" fill="#fff6f2">{glyph}</text>
 </svg>"##,
-            name = self.name, accent = self.accent, soft = self.accent_soft, glyph = glyph)
+            name = self.name, top = fill_top, bottom = fill_bottom, ring = ring, glyph = glyph)
     }
 }
 
