@@ -560,11 +560,13 @@ fn branded_bytes(gateway: &Gateway, path: &str, content_type: &str, bytes: &[u8]
 }
 
 async fn mirrored_response(gateway: &Gateway, method: &Method, path: &str, mirrored: mirror::Mirrored) -> Response {
-    let Ok(bytes) = tokio::fs::read(&mirrored.file).await else {
-        // The index promised a file that is gone: fall back to the live upstream rather
-        // than serving a broken page.
-        eprintln!("frontend mirror: missing {}", mirrored.file.display());
-        return text(StatusCode::NOT_FOUND, "Not found");
+    let bytes = match tokio::fs::read(&mirrored.file).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            // Name the real cause: "missing" hid a permission or path problem more than once.
+            eprintln!("frontend mirror: cannot read {} ({error})", mirrored.file.display());
+            return text(StatusCode::NOT_FOUND, "Not found");
+        }
     };
     // A pinned chunk is served as the PATCHED bytes, but only when the snapshot file is
     // exactly the build those patches were generated from. This keeps the adapter working
