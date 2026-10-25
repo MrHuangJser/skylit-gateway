@@ -9,11 +9,12 @@ try {
   await page.waitForFunction(() => (document.body?.innerText || '').length > 800, undefined, { timeout: 90000 }).catch(() => {});
   await page.waitForTimeout(8000);
   const visible = await page.evaluate(() => [...document.querySelectorAll('aside a[href], nav a[href]')]
-    .filter(a => a.offsetParent !== null && a.getBoundingClientRect().height > 0)
+    // The sidebar is position:fixed, so offsetParent is null for its children; use layout.
+    .filter(a => getComputedStyle(a).display !== 'none' && a.getBoundingClientRect().height > 0)
     .map(a => ({ label: (a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 22), href: a.getAttribute('href') }))
     .filter(e => e.href && e.href.startsWith('/')));
   const hidden = await page.evaluate(() => [...document.querySelectorAll('aside a[href], nav a[href]')]
-    .filter(a => a.offsetParent === null || a.getBoundingClientRect().height === 0)
+    .filter(a => getComputedStyle(a).display === 'none' || a.getBoundingClientRect().height === 0)
     .map(a => a.getAttribute('href')).filter(h => h && h.startsWith('/')));
   console.log(JSON.stringify({ visible, hidden: [...new Set(hidden)] }, null, 2));
 } finally { await browser.close(); }
