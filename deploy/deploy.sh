@@ -8,7 +8,8 @@ set -uo pipefail
 
 HOST="${DEPLOY_HOST:-ovh}"
 IMAGE="${DEPLOY_IMAGE:-skylit-gateway:branded}"
-REMOTE_DIR="${DEPLOY_DIR:-$HOME/skylit-gateway-deploy}"
+# Expanded on the REMOTE side; a local $HOME would be a Windows path.
+REMOTE_DIR="${DEPLOY_DIR:-\$HOME/skylit-gateway-deploy}"
 ORIGIN="${DEPLOY_ORIGIN:-https://skylit.tsra.dev}"
 # Paths that must answer 200 for the deploy to count as good.
 CHECKS=("/heatmaps" "/atlas" "/academy" "/stages" "/calendar")
@@ -33,7 +34,7 @@ ssh -o BatchMode=yes "$HOST" "set -e
   rm -f /tmp/skylit-image.tar" || fail "image load"
 
 deploy_image() {
-  ssh -o BatchMode=yes "$HOST" "cd $REMOTE_DIR/repo/deploy && GATEWAY_IMAGE=$1 docker compose -p skylit --env-file $REMOTE_DIR/.env up -d --no-build --force-recreate gateway" >/dev/null 2>&1
+  ssh -o BatchMode=yes "$HOST" "cd $REMOTE_DIR/repo/deploy && GATEWAY_IMAGE=$1 docker compose -p skylit --env-file $REMOTE_DIR/.env up -d --no-build --force-recreate gateway" 2>&1 | tail -3
 }
 
 echo "== recreating the gateway container"

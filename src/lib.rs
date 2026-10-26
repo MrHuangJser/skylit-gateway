@@ -555,6 +555,10 @@ async fn dispatch_admitted(gateway: &Arc<Gateway>, request: Request, path: &str,
     if gateway.config.enable_frontend_auth_rewrite && request.method() == Method::POST {
         if path == "/api/edge/cookies" { return edge_grant(&gateway, request).await; }
         if path == "/api/sse/ticket" { return sse_ticket(&gateway, request).await; }
+        // Watching a live stage is the one interactive feature on this gateway: joining,
+        // leaving and the presence beacons are POSTs. They are forwarded only for the exact
+        // stage routes below, with the same same-origin + local-auth + bounded-body rules.
+        if live_stage_write(path) { return live_stage_action(&gateway, request, path).await; }
     }
     if request.method() != Method::GET && request.method() != Method::HEAD {
         return text(StatusCode::FORBIDDEN, "Transport-only phase: upstream mutations are disabled");
@@ -665,6 +669,56 @@ fn status_report(gateway: &Gateway) -> StatusReport {
             sign_ins: sidecar.as_ref().and_then(|v| v.get("signIns")).and_then(serde_json::Value::as_u64),
         },
         upstream: UpstreamStatus { checked_seconds_ago, matches_pinned, live_chunks },
+    }
+}
+
+/// The only writes the gateway forwards: a stage session's own membership calls.
+/// Shape: /api/stages/<uuid>/<action>, where the id must look like a uuid and the action is
+/// from a fixed set. Anything else stays blocked.
+fn live_stage_write(path: &str) -> bool {
+    const ACTIONS: [&str; 6] = ["join", "leave", "heartbeat", "presence", "chat", "typing"];
+    let Some(rest) = path.strip_prefix("/api/stages/") else { return false };
+    let mut parts = rest.split('/');
+    let (Some(id), Some(action), None) = (parts.next(), parts.next(), parts.next()) else { return false };
+    let uuid_shape = id.len() == 36
+        && id.as_bytes().iter().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => *b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        });
+    uuid_shape && ACTIONS.contains(&action)
+}
+
+/// Forwards one stage membership call to the fixed upstream with the trusted bearer.
+async fn live_stage_action(gateway: &Gateway, request: Request, path: &str) -> Response {
+    if !gateway.same_origin(request.headers()) { return text(StatusCode::FORBIDDEN, "Same-origin Origin required"); }
+    if let Some(types) = request.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()) {
+        let json = types.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/json");
+        if !json { return text(StatusCode::UNSUPPORTED_MEDIA_TYPE, "application/json required"); }
+    }
+    let bytes = match bounded_post_body(request).await { Ok(bytes) => bytes, Err(response) => return response };
+    let forwarded = tokio::time::timeout(Duration::from_secs(15), async {
+        let file = gateway.config.session_file.as_deref().ok_or(())?;
+        let snapshot = session::TokenSnapshot::load(file).await.map_err(|_| ())?;
+        let mut builder = gateway.client.post(fixed_target(gateway, path))
+            .header(header::AUTHORIZATION, snapshot.authorization())
+            .header(header::ORIGIN, gateway.upstream.origin().ascii_serialization())
+            .header(header::ACCEPT, "application/json");
+        if !bytes.is_empty() { builder = builder.header(header::CONTENT_TYPE, "application/json"); }
+        let mut response = builder.body(bytes).send().await.map_err(|_| ())?;
+        let status = response.status();
+        if status.is_redirection() || status.is_informational() { return Err(()); }
+        let body = bounded_upstream(&mut response).await?;
+        Ok((status, body))
+    }).await;
+    match forwarded {
+        Ok(Ok((status, body))) => {
+            let mut response = Response::new(Body::from(body));
+            *response.status_mut() = status;
+            response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            local(response)
+        }
+        Ok(Err(())) => text(StatusCode::SERVICE_UNAVAILABLE, "Upstream stage call unavailable"),
+        Err(_) => text(StatusCode::GATEWAY_TIMEOUT, "Upstream stage call timed out"),
     }
 }
 

@@ -1666,6 +1666,26 @@ async fn status_reports_the_snapshot_and_never_leaks_the_token() {
 }
 
 #[test]
+fn only_stage_membership_writes_are_forwarded() {
+    let id = "144a5b29-09da-4b06-9ed5-52fd2b93731c";
+    for action in ["join", "leave", "heartbeat", "presence", "chat", "typing"] {
+        assert!(live_stage_write(&format!("/api/stages/{id}/{action}")), "{action} must be allowed");
+    }
+    // Everything else stays blocked: other ids, other actions, deeper paths, no id at all.
+    for path in [
+        "/api/stages/not-a-uuid/join".to_owned(),
+        format!("/api/stages/{id}/delete"),
+        format!("/api/stages/{id}/join/extra"),
+        format!("/api/stages/{id}"),
+        "/api/stages/".to_owned(),
+        format!("/api/nexus/stages/{id}/join"),
+        format!("/api/stages/{id}/join?x=1"),
+    ] {
+        assert!(!live_stage_write(&path), "must stay blocked: {path}");
+    }
+}
+
+#[test]
 fn public_origin_is_a_single_origin_not_a_destination_url() {    assert_eq!(parse_origin("https://gateway.example.test/").unwrap(), ORIGIN);
     for bad in ["null", "file:///tmp", "https://user:password@gateway.example.test", "https://gateway.example.test/path", "https://gateway.example.test/?query", "https://gateway.example.test/#fragment"] {
         assert!(parse_origin(bad).is_err());
